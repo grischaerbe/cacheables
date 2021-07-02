@@ -50,7 +50,7 @@ await myCachedApiQuery('en')
 
 `cacheable` serves both as the getter and setter. This method will return a cached resource if available or use the provided argument `resource` to fill the cache and return a value.
 
->> Be aware that there is no exclusive getter as the Promise provided by the first argument to `cacheable` is used to infer the return type of the cache.
+> Be aware that there is no exclusive getter as the Promise provided by the first argument to `cacheable` is used to infer the return type of the cache.
 
 ## API
 

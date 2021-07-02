@@ -1,0 +1,38 @@
+{
+  "name": "cacheables",
+  "version": "0.1.0",
+  "description": "A simple in-memory cache with automatic cache invalidation, proper types and a neat syntax.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "prepublish": "tsc",
+    "build": "tsc",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/grischaerbe/cacheables.git"
+  },
+  "keywords": [
+    "node",
+    "browser",
+    "cache",
+    "in-memory",
+    "typescript"
+  ],
+  "author": "Grischa Erbe <grischa.erbe@googlemail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/grischaerbe/cacheables/issues"
+  },
+  "homepage": "https://github.com/grischaerbe/cacheables#readme",
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^4.28.1",
+    "@typescript-eslint/parser": "^4.28.1",
+    "eslint": "^7.29.0",
+    "eslint-config-prettier": "^8.3.0",
+    "eslint-plugin-prettier": "^3.4.0",
+    "prettier": "^2.3.2",
+    "typescript": "^4.3.5"
+  }
+}

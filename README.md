@@ -10,6 +10,7 @@ A simple in-memory cache with automatic or manual cache invalidation and elegant
 - Integrated Logs: Check on the timing of your API calls.
 - Helper function to build cache keys.
 - Works in the browser and Node.js
+- No dependencies
 
 ## Installation
 
@@ -20,31 +21,37 @@ npm install cacheables
 ## Usage
 
 ```ts
-// Create a new Cacheables instance
+// Import Cacheables
+import { Cacheables } from 'cacheables'
+
+// Create a new cache instance
 const cache = new Cacheables({
   logTiming: true,
 })
 
 // Use the method `cacheable` to set and get from the cache
-const myCachedApiQuery = (locale: string) => {
-  return cache.cacheable(
+const myCachedApiQuery = (locale: string) =>
+  cache.cacheable(
     () => myApiQuery(locale),
     Cacheables.key('myKey', locale),
     60e3,
   )
-}
 
 await myCachedApiQuery('de')
-// Cache miss: initial call, resolved return value of first
-// argument `() => myApiQuery(locale)` is cached and returned.
+// Cache miss: initial call.
+// In this example, the response of myApiQuery('de') will be
+// cached for 60 seconds with the key 'myKey:de'.
+
 // myKey:de: 120.922ms
 
-// Cache hit.
 await myCachedApiQuery('de')
+// Cache hit.
+
 // myKey:de: 0.029ms
 
-// Cache miss: resource with key "myKey:en" not in cache.
 await myCachedApiQuery('en')
+// Cache miss: resource with key "myKey:en" not in cache.
+
 // myKey:en: 156.538ms
 ```
 
@@ -71,6 +78,8 @@ Log the timing of cache hits/misses and returns.
 #### Example:
 
 ```ts
+import { Cacheables } from 'cacheables'
+
 const cache = new Cacheables({
   logTiming: true
 })

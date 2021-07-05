@@ -1,13 +1,22 @@
 export interface CacheOptions {
+  /**
+   * Enables cacheing
+   */
   enabled?: boolean
+  /**
+   * Should log data
+   */
   log?: boolean
+  /**
+   * Should log timing
+   */
   logTiming?: boolean
 }
 
 /**
  * Provides a simple in-memory cache with automatic or manual invalidation.
  */
-export class Cacheables {
+export class Cacheables implements CacheOptions {
   public log: boolean
   public enabled: boolean
   public logTiming: boolean
@@ -144,6 +153,7 @@ export class Cacheables {
       this.logDisabled()
       return resource()
     }
+
     this.startLogTime(key)
     if (this.cache[key] && this.cache[key].value) {
       this.cache[key].hits += 1

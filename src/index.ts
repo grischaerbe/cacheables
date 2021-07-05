@@ -1,6 +1,15 @@
 export interface CacheOptions {
+  /**
+   * Enables cacheing
+   */
   enabled?: boolean
+  /**
+   * Should log data
+   */
   log?: boolean
+  /**
+   * Should log timing
+   */
   logTiming?: boolean
 }
 
@@ -8,14 +17,13 @@ export interface CacheOptions {
  * Provides a simple in-memory cache with automatic or manual invalidation.
  */
 export class Cacheables {
-  public log: boolean
   public enabled: boolean
-  public logTiming: boolean
+  private log: Logger | undefined
 
   constructor(options?: CacheOptions) {
     this.enabled = options?.enabled ?? true
-    this.log = options?.log ?? false
-    this.logTiming = options?.logTiming ?? false
+    if (options?.log === true)
+      this.log = new Logger(options?.logTiming ?? false)
   }
 
   private cache: Record<
@@ -28,67 +36,16 @@ export class Cacheables {
     }
   > = {}
 
-  // region logs
-  private startLogTime(key: string): void {
-    if (this.logTiming) {
-      // eslint-disable-next-line no-console
-      console.time(key)
-    }
-  }
-
-  private stopLogTime(key: string): void {
-    if (this.logTiming) {
-      // eslint-disable-next-line no-console
-      console.timeEnd(key)
-    }
-  }
-
-  private logDisabled(): void {
-    if (this.log) {
-      // eslint-disable-next-line no-console
-      console.log('CACHE: Caching disabled')
-    }
-  }
-
-  private logCacheHit(key: string, hits: number): void {
-    if (this.log) {
-      // eslint-disable-next-line no-console
-      console.log(`CACHE HIT: "${key}" found, hits: ${hits}.`)
-    }
-  }
-
-  private logCacheMiss(key: string, misses: number): void {
-    if (this.log) {
-      // eslint-disable-next-line no-console
-      console.log(`CACHE MISS: "${key}" has no value, misses: ${misses}.`)
-    }
-  }
-
-  private logNewCacheable(key: string): void {
-    if (this.log) {
-      // eslint-disable-next-line no-console
-      console.log(`CACHE MISS: "${key}" not in cache yet, caching.`)
-    }
-  }
-
-  private logInvalidatingCache(key: string): void {
-    if (this.log) {
-      // eslint-disable-next-line no-console
-      console.log(`CACHE INVALIDATED: "${key}" invalidated.`)
-    }
-  }
-  // endregion
-
   private clearValue(key: string): void {
-    if (this.cache[key] && this.cache[key].value) {
-      delete this.cache[key].value
-      this.logInvalidatingCache(key)
+    if (this.cache[key] && this.cache[key]?.value) {
+      delete this.cache[key]?.value
+      this.log?.logInvalidatingCache(key)
     }
   }
 
   private clearTimeout(key: string): void {
-    if (this.cache[key] && this.cache[key].timer) {
-      clearTimeout(this.cache[key].timer as ReturnType<typeof setTimeout>)
+    if (this.cache[key] && this.cache[key]?.timer) {
+      clearTimeout(this.cache[key]?.timer as ReturnType<typeof setTimeout>)
     }
   }
 
@@ -140,45 +97,101 @@ export class Cacheables {
     key: string,
     timeout?: number,
   ): Promise<T> {
-    if (!this.enabled) {
-      this.logDisabled()
+    const shouldCache = this.enabled === true
+    if (!shouldCache) {
+      this.log?.logDisabled()
       return resource()
     }
-    this.startLogTime(key)
-    if (this.cache[key] && this.cache[key].value) {
-      this.cache[key].hits += 1
-      this.logCacheHit(key, this.cache[key].hits)
-      this.stopLogTime(key)
-      return this.cache[key].value as T
+
+    this.log?.startLogTime(key)
+    const result = await this.#cacheable(resource, key, timeout)
+    this.log?.stopLogTime(key)
+
+    return result
+  }
+
+  async #cacheable<T>(
+    resource: () => Promise<T>,
+    key: string,
+    timeout?: number,
+  ): Promise<T> {
+    const storedResource = this.cache[key]
+
+    if (storedResource === undefined) {
+      const value = await resource()
+      this.cache[key] = {
+        value,
+        hits: 0,
+        misses: 1,
+        timer: timeout
+          ? setTimeout(() => {
+              this.clearValue(key)
+            }, timeout)
+          : undefined,
+      }
+      this.log?.logNewCacheable(key)
+      return value
+    }
+
+    const hasRetrievedValue = storedResource.value !== undefined
+    if (hasRetrievedValue) {
+      storedResource.hits += 1
+      this.log?.logCacheHit(key, storedResource.hits)
+      return storedResource.value as T
     } else {
       const value = await resource()
-      if (this.cache[key] && !this.cache[key].value) {
-        this.clearTimeout(key)
-        if (timeout) {
-          this.cache[key].timer = setTimeout(() => {
-            this.clearValue(key)
-          }, timeout)
-        }
-        this.cache[key].value = value
-        this.cache[key].misses += 1
-        this.logCacheMiss(key, this.cache[key].misses)
-        this.stopLogTime(key)
-        return value
-      } else {
-        this.cache[key] = {
-          value,
-          hits: 0,
-          misses: 1,
-          timer: timeout
-            ? setTimeout(() => {
-                this.clearValue(key)
-              }, timeout)
-            : undefined,
-        }
-        this.logNewCacheable(key)
-        this.stopLogTime(key)
-        return value
+      this.clearTimeout(key)
+      if (timeout) {
+        storedResource.timer = setTimeout(() => {
+          this.clearValue(key)
+        }, timeout)
       }
+      storedResource.value = value
+      storedResource.misses += 1
+      this.log?.logCacheMiss(key, storedResource.misses)
+      return value
     }
+  }
+}
+
+class Logger {
+  constructor(private logTiming: boolean) {}
+  startLogTime(key: string): void {
+    if (this.logTiming) {
+      // eslint-disable-next-line no-console
+      console.time(key)
+    }
+  }
+
+  stopLogTime(key: string): void {
+    if (this.logTiming) {
+      // eslint-disable-next-line no-console
+      console.timeEnd(key)
+    }
+  }
+
+  logDisabled(): void {
+    // eslint-disable-next-line no-console
+    console.log('CACHE: Caching disabled')
+  }
+
+  logCacheHit(key: string, hits: number): void {
+    // eslint-disable-next-line no-console
+    console.log(`CACHE HIT: "${key}" found, hits: ${hits}.`)
+  }
+
+  logCacheMiss(key: string, misses: number): void {
+    // eslint-disable-next-line no-console
+    console.log(`CACHE MISS: "${key}" has no value, misses: ${misses}.`)
+  }
+
+  logNewCacheable(key: string): void {
+    // eslint-disable-next-line no-console
+    console.log(`CACHE MISS: "${key}" not in cache yet, caching.`)
+  }
+
+  logInvalidatingCache(key: string): void {
+    // eslint-disable-next-line no-console
+    console.log(`CACHE INVALIDATED: "${key}" invalidated.`)
   }
 }

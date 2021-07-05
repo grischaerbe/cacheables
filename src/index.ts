@@ -165,20 +165,20 @@ export class Cacheables {
       this.logCacheMiss(key, this.cache[key].misses)
       this.stopLogTime(key)
       return value
-    } else {
-      this.cache[key] = {
-        value,
-        hits: 0,
-        misses: 1,
-        timer: timeout
-          ? setTimeout(() => {
-              this.clearValue(key)
-            }, timeout)
-          : undefined,
-      }
-      this.logNewCacheable(key)
-      this.stopLogTime(key)
-      return value
     }
+
+    this.cache[key] = {
+      value,
+      hits: 0,
+      misses: 1,
+      timer: timeout
+        ? setTimeout(() => {
+            this.clearValue(key)
+          }, timeout)
+        : undefined,
+    }
+    this.logNewCacheable(key)
+    this.stopLogTime(key)
+    return value
   }
 }

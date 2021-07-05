@@ -156,40 +156,52 @@ export class Cacheables implements CacheOptions {
     }
 
     this.startLogTime(key)
-    if (this.cache[key] && this.cache[key]?.value !== undefined) {
-      this.cache[key]!.hits += 1
-      this.logCacheHit(key, this.cache[key]!.hits)
-      this.stopLogTime(key)
-      return this.cache[key]!.value as T
-    }
+    const result = await this.#cacheable(resource, key, timeout)
+    this.stopLogTime(key)
 
-    const value = await resource()
-    if (this.cache[key] && !this.cache[key]?.value) {
-      this.clearTimeout(key)
-      if (timeout) {
-        this.cache[key]!.timer = setTimeout(() => {
-          this.clearValue(key)
-        }, timeout)
+    return result
+  }
+
+  async #cacheable<T>(
+    resource: () => Promise<T>,
+    key: string,
+    timeout?: number,
+  ): Promise<T> {
+    const storedResource = this.cache[key]
+
+    if (storedResource === undefined) {
+      const value = await resource()
+      this.cache[key] = {
+        value,
+        hits: 0,
+        misses: 1,
+        timer: timeout
+          ? setTimeout(() => {
+              this.clearValue(key)
+            }, timeout)
+          : undefined,
       }
-      this.cache[key]!.value = value
-      this.cache[key]!.misses += 1
-      this.logCacheMiss(key, this.cache[key]!.misses)
-      this.stopLogTime(key)
+      this.logNewCacheable(key)
       return value
     }
 
-    this.cache[key] = {
-      value,
-      hits: 0,
-      misses: 1,
-      timer: timeout
-        ? setTimeout(() => {
-            this.clearValue(key)
-          }, timeout)
-        : undefined,
+    const hasRetrievedValue = storedResource.value !== undefined
+    if (hasRetrievedValue) {
+      storedResource.hits += 1
+      this.logCacheHit(key, storedResource.hits)
+      return storedResource.value as T
+    } else {
+      const value = await resource()
+      this.clearTimeout(key)
+      if (timeout) {
+        storedResource.timer = setTimeout(() => {
+          this.clearValue(key)
+        }, timeout)
+      }
+      storedResource.value = value
+      storedResource.misses += 1
+      this.logCacheMiss(key, storedResource.misses)
+      return value
     }
-    this.logNewCacheable(key)
-    this.stopLogTime(key)
-    return value
   }
 }

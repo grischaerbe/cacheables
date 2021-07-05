@@ -149,7 +149,8 @@ export class Cacheables implements CacheOptions {
     key: string,
     timeout?: number,
   ): Promise<T> {
-    if (!this.enabled) {
+    const shouldCache = this.enabled === true
+    if (!shouldCache) {
       this.logDisabled()
       return resource()
     }

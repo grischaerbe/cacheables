@@ -150,35 +150,35 @@ export class Cacheables {
       this.logCacheHit(key, this.cache[key].hits)
       this.stopLogTime(key)
       return this.cache[key].value as T
-    } else {
-      const value = await resource()
-      if (this.cache[key] && !this.cache[key].value) {
-        this.clearTimeout(key)
-        if (timeout) {
-          this.cache[key].timer = setTimeout(() => {
-            this.clearValue(key)
-          }, timeout)
-        }
-        this.cache[key].value = value
-        this.cache[key].misses += 1
-        this.logCacheMiss(key, this.cache[key].misses)
-        this.stopLogTime(key)
-        return value
-      } else {
-        this.cache[key] = {
-          value,
-          hits: 0,
-          misses: 1,
-          timer: timeout
-            ? setTimeout(() => {
-                this.clearValue(key)
-              }, timeout)
-            : undefined,
-        }
-        this.logNewCacheable(key)
-        this.stopLogTime(key)
-        return value
+    }
+
+    const value = await resource()
+    if (this.cache[key] && !this.cache[key].value) {
+      this.clearTimeout(key)
+      if (timeout) {
+        this.cache[key].timer = setTimeout(() => {
+          this.clearValue(key)
+        }, timeout)
       }
+      this.cache[key].value = value
+      this.cache[key].misses += 1
+      this.logCacheMiss(key, this.cache[key].misses)
+      this.stopLogTime(key)
+      return value
+    } else {
+      this.cache[key] = {
+        value,
+        hits: 0,
+        misses: 1,
+        timer: timeout
+          ? setTimeout(() => {
+              this.clearValue(key)
+            }, timeout)
+          : undefined,
+      }
+      this.logNewCacheable(key)
+      this.stopLogTime(key)
+      return value
     }
   }
 }

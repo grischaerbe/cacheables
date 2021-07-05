@@ -2,6 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 ![Language](https://img.shields.io/github/languages/top/grischaerbe/cacheables)
+![Build](https://img.shields.io/github/workflow/status/grischaerbe/cacheables/Node.js%20Package)
 
 A simple in-memory cache with automatic or manual cache invalidation and elegant syntax written in Typescript.
 

@@ -11,6 +11,7 @@ A simple in-memory cache with automatic or manual cache invalidation and elegant
 - Helper function to build cache keys.
 - Works in the browser and Node.js.
 - No dependencies.
+- Tested.
 
 ## Installation
 
@@ -65,10 +66,12 @@ await cachedApiQuery('en')
 
 - Creates a new `Cacheables` instance.
 
-#### options
+#### Arguments
+
+##### - `options?: CacheOptions`
 
 ```ts
-interface Options {
+interface CacheOptions {
   enabled?: boolean    // Enable/disable the cache, can be set anytime, default: true.
   log?: boolean        // Log hits and misses to the cache, default: false. 
   logTiming?: boolean  // Log the timing of cache hits/misses and returns, default: false.
@@ -92,15 +95,15 @@ const cache = new Cacheables({
 
 #### Arguments
 
-##### `resource: () => Promise<T>`
+##### - `resource: () => Promise<T>`
 
 A function that returns a `Promise<T>`. 
 
-##### `key: string`
+##### - `key: string`
 
 A key to store the cache at.
 
-##### `timeout?: number` (optional)
+##### - `timeout?: number` (optional)
 
 A timeout in milliseconds after which the cache will be invalidated automatically.
 
@@ -116,7 +119,9 @@ const apiResponse = await cache.cacheable(
 
 ### `cache.delete(key: string): void`
 
-#### `key`
+#### Arguments
+
+##### - `key: string`
 
 Delete a cache for a certain key. This will preserve the hit/miss counts for a cache.
 
@@ -150,7 +155,7 @@ PRs welcome
 
 - [ ] Cache invalidation callback
 - [ ] Adapters to store cache not only in memory
-- [ ] Tests
+- [X] Tests
 
 ## License
 

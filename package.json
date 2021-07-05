@@ -1,13 +1,16 @@
 {
   "name": "cacheables",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "description": "A simple in-memory cache written in Typescript with automatic cache invalidation and an elegant syntax.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "prepublish": "tsc",
-    "build": "tsc",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "typecheck": "tsc --noEmit",
+    "eslint": "eslint --fix src/**/*.ts",
+    "prepublish": "npm run eslint && npm run typecheck && npm run build && npm test",
+    "build": "tsc"
   },
   "repository": {
     "type": "git",
@@ -27,12 +30,15 @@
   },
   "homepage": "https://github.com/grischaerbe/cacheables#readme",
   "devDependencies": {
+    "@types/jest": "^26.0.23",
     "@typescript-eslint/eslint-plugin": "^4.28.1",
     "@typescript-eslint/parser": "^4.28.1",
     "eslint": "^7.29.0",
     "eslint-config-prettier": "^8.3.0",
     "eslint-plugin-prettier": "^3.4.0",
+    "jest": "^27.0.6",
     "prettier": "^2.3.2",
+    "ts-jest": "^27.0.3",
     "typescript": "^4.3.5"
   }
 }

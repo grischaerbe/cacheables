@@ -1,6 +1,15 @@
 export interface CacheOptions {
+  /**
+   * Enables caching
+   */
   enabled?: boolean
+  /**
+   * Enable/disable cache hits and misses
+   */
   log?: boolean
+  /**
+   * Enable/disable timings
+   */
   logTiming?: boolean
 }
 
@@ -8,8 +17,8 @@ export interface CacheOptions {
  * Provides a simple in-memory cache with automatic or manual invalidation.
  */
 export class Cacheables {
-  public log: boolean
   public enabled: boolean
+  public log: boolean
   public logTiming: boolean
 
   constructor(options?: CacheOptions) {
@@ -28,67 +37,16 @@ export class Cacheables {
     }
   > = {}
 
-  // region logs
-  private startLogTime(key: string): void {
-    if (this.logTiming) {
-      // eslint-disable-next-line no-console
-      console.time(key)
-    }
-  }
-
-  private stopLogTime(key: string): void {
-    if (this.logTiming) {
-      // eslint-disable-next-line no-console
-      console.timeEnd(key)
-    }
-  }
-
-  private logDisabled(): void {
-    if (this.log) {
-      // eslint-disable-next-line no-console
-      console.log('CACHE: Caching disabled')
-    }
-  }
-
-  private logCacheHit(key: string, hits: number): void {
-    if (this.log) {
-      // eslint-disable-next-line no-console
-      console.log(`CACHE HIT: "${key}" found, hits: ${hits}.`)
-    }
-  }
-
-  private logCacheMiss(key: string, misses: number): void {
-    if (this.log) {
-      // eslint-disable-next-line no-console
-      console.log(`CACHE MISS: "${key}" has no value, misses: ${misses}.`)
-    }
-  }
-
-  private logNewCacheable(key: string): void {
-    if (this.log) {
-      // eslint-disable-next-line no-console
-      console.log(`CACHE MISS: "${key}" not in cache yet, caching.`)
-    }
-  }
-
-  private logInvalidatingCache(key: string): void {
-    if (this.log) {
-      // eslint-disable-next-line no-console
-      console.log(`CACHE INVALIDATED: "${key}" invalidated.`)
-    }
-  }
-  // endregion
-
   private clearValue(key: string): void {
-    if (this.cache[key] && this.cache[key].value) {
-      delete this.cache[key].value
-      this.logInvalidatingCache(key)
+    if (this.cache[key] && this.cache[key]?.value) {
+      delete this.cache[key]?.value
+      if (this.log) Logger.logInvalidatingCache(key)
     }
   }
 
   private clearTimeout(key: string): void {
-    if (this.cache[key] && this.cache[key].timer) {
-      clearTimeout(this.cache[key].timer as ReturnType<typeof setTimeout>)
+    if (this.cache[key] && this.cache[key]?.timer) {
+      clearTimeout(this.cache[key]?.timer as ReturnType<typeof setTimeout>)
     }
   }
 
@@ -106,7 +64,14 @@ export class Cacheables {
   }
 
   public clear(): void {
-    Object.keys(this.cache).forEach(this.delete)
+    Object.keys(this.cache).forEach(this.delete.bind(this))
+  }
+
+  /**
+   * Returns whether a value is present for a certain key
+   */
+  public isCached(key: string): boolean {
+    return !!this.cache[key]?.value
   }
 
   /**
@@ -124,12 +89,12 @@ export class Cacheables {
    * @param timeout A timeout in milliseconds to automatically invalidate
    * the cache (optional)
    * @example
-   * const myApiResponse = await myCache.cacheable(
-   *   () => myApi.query({
+   * const apiResponse = await cache.cacheable(
+   *   () => api.query({
    *     query: someQuery,
    *     variables: someVariables,
    *   }),
-   *   Cache.key('MyType', someCacheKey, someOtherCacheKey),
+   *   Cache.key('type', someCacheKey, someOtherCacheKey),
    *   60e3
    * )
    * @returns promise Resolves to the value of the provided resource, either from
@@ -140,45 +105,96 @@ export class Cacheables {
     key: string,
     timeout?: number,
   ): Promise<T> {
-    if (!this.enabled) {
-      this.logDisabled()
+    const shouldCache = this.enabled
+    if (!shouldCache) {
+      if (this.log) Logger.logDisabled()
       return resource()
     }
-    this.startLogTime(key)
-    if (this.cache[key] && this.cache[key].value) {
-      this.cache[key].hits += 1
-      this.logCacheHit(key, this.cache[key].hits)
-      this.stopLogTime(key)
-      return this.cache[key].value as T
+
+    if (this.log) Logger.startLogTime(key)
+    const result = await this.#cacheable(resource, key, timeout)
+    if (this.log) Logger.stopLogTime(key)
+
+    return result
+  }
+
+  async #cacheable<T>(
+    resource: () => Promise<T>,
+    key: string,
+    timeout?: number,
+  ): Promise<T> {
+    const storedResource = this.cache[key]
+
+    if (storedResource === undefined) {
+      const value = await resource()
+      this.cache[key] = {
+        value,
+        hits: 0,
+        misses: 1,
+        timer: timeout
+          ? setTimeout(() => {
+              this.clearValue(key)
+            }, timeout)
+          : undefined,
+      }
+      if (this.log) Logger.logNewCacheable(key)
+      return value
+    }
+
+    const hasRetrievedValue = storedResource.value !== undefined
+    if (hasRetrievedValue) {
+      storedResource.hits += 1
+      if (this.log) Logger.logCacheHit(key, storedResource.hits)
+      return storedResource.value as T
     } else {
       const value = await resource()
-      if (this.cache[key] && !this.cache[key].value) {
-        this.clearTimeout(key)
-        if (timeout) {
-          this.cache[key].timer = setTimeout(() => {
-            this.clearValue(key)
-          }, timeout)
-        }
-        this.cache[key].value = value
-        this.cache[key].misses += 1
-        this.logCacheMiss(key, this.cache[key].misses)
-        this.stopLogTime(key)
-        return value
-      } else {
-        this.cache[key] = {
-          value,
-          hits: 0,
-          misses: 1,
-          timer: timeout
-            ? setTimeout(() => {
-                this.clearValue(key)
-              }, timeout)
-            : undefined,
-        }
-        this.logNewCacheable(key)
-        this.stopLogTime(key)
-        return value
+      this.clearTimeout(key)
+      if (timeout) {
+        storedResource.timer = setTimeout(() => {
+          this.clearValue(key)
+        }, timeout)
       }
+      storedResource.value = value
+      storedResource.misses += 1
+      if (this.log) Logger.logCacheMiss(key, storedResource.misses)
+      return value
     }
+  }
+}
+
+class Logger {
+  static startLogTime(key: string): void {
+    // eslint-disable-next-line no-console
+    console.time(key)
+  }
+
+  static stopLogTime(key: string): void {
+    // eslint-disable-next-line no-console
+    console.timeEnd(key)
+  }
+
+  static logDisabled(): void {
+    // eslint-disable-next-line no-console
+    console.log('CACHE: Caching disabled')
+  }
+
+  static logCacheHit(key: string, hits: number): void {
+    // eslint-disable-next-line no-console
+    console.log(`CACHE HIT: "${key}" found, hits: ${hits}.`)
+  }
+
+  static logCacheMiss(key: string, misses: number): void {
+    // eslint-disable-next-line no-console
+    console.log(`CACHE MISS: "${key}" has no value, misses: ${misses}.`)
+  }
+
+  static logNewCacheable(key: string): void {
+    // eslint-disable-next-line no-console
+    console.log(`CACHE MISS: "${key}" not in cache yet, caching.`)
+  }
+
+  static logInvalidatingCache(key: string): void {
+    // eslint-disable-next-line no-console
+    console.log(`CACHE INVALIDATED: "${key}" invalidated.`)
   }
 }

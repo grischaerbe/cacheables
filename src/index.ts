@@ -89,15 +89,15 @@ export class Cacheables implements CacheOptions {
   // endregion
 
   private clearValue(key: string): void {
-    if (this.cache[key] && this.cache[key].value) {
-      delete this.cache[key].value
+    if (this.cache[key] && this.cache[key]?.value) {
+      delete this.cache[key]?.value
       this.logInvalidatingCache(key)
     }
   }
 
   private clearTimeout(key: string): void {
-    if (this.cache[key] && this.cache[key].timer) {
-      clearTimeout(this.cache[key].timer as ReturnType<typeof setTimeout>)
+    if (this.cache[key] && this.cache[key]?.timer) {
+      clearTimeout(this.cache[key]?.timer as ReturnType<typeof setTimeout>)
     }
   }
 
@@ -156,24 +156,24 @@ export class Cacheables implements CacheOptions {
     }
 
     this.startLogTime(key)
-    if (this.cache[key] && this.cache[key].value) {
-      this.cache[key].hits += 1
-      this.logCacheHit(key, this.cache[key].hits)
+    if (this.cache[key] && this.cache[key]?.value !== undefined) {
+      this.cache[key]!.hits += 1
+      this.logCacheHit(key, this.cache[key]!.hits)
       this.stopLogTime(key)
-      return this.cache[key].value as T
+      return this.cache[key]!.value as T
     }
 
     const value = await resource()
-    if (this.cache[key] && !this.cache[key].value) {
+    if (this.cache[key] && !this.cache[key]?.value) {
       this.clearTimeout(key)
       if (timeout) {
-        this.cache[key].timer = setTimeout(() => {
+        this.cache[key]!.timer = setTimeout(() => {
           this.clearValue(key)
         }, timeout)
       }
-      this.cache[key].value = value
-      this.cache[key].misses += 1
-      this.logCacheMiss(key, this.cache[key].misses)
+      this.cache[key]!.value = value
+      this.cache[key]!.misses += 1
+      this.logCacheMiss(key, this.cache[key]!.misses)
       this.stopLogTime(key)
       return value
     }

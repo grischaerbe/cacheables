@@ -1,3 +1,4 @@
+//region Types
 export interface CacheOptions {
   /**
    * Enables caching
@@ -12,7 +13,9 @@ export interface CacheOptions {
    */
   logTiming?: boolean
 }
+//endregion
 
+//region Cacheables
 /**
  * Provides a simple in-memory cache with automatic or manual invalidation.
  */
@@ -27,58 +30,44 @@ export class Cacheables {
     this.logTiming = options?.logTiming ?? false
   }
 
-  private cache: Record<
-    string,
-    {
-      timer?: ReturnType<typeof setTimeout>
-      value: any
-      misses: number
-      hits: number
-    }
-  > = {}
-
-  private clearValue(key: string): void {
-    if (this.cache[key] && this.cache[key]?.value) {
-      delete this.cache[key]?.value
-      if (this.log) Logger.logInvalidatingCache(key)
-    }
-  }
-
-  private clearTimeout(key: string): void {
-    if (this.cache[key] && this.cache[key]?.timer) {
-      clearTimeout(this.cache[key]?.timer as ReturnType<typeof setTimeout>)
-    }
-  }
+  private cacheables: Record<string, Cacheable<any>> = {}
 
   /**
-   * Build a key by providing strings or numbers
+   * Builds a key with the provided strings or numbers.
    * @param args
    */
   public static key(...args: (string | number)[]): string {
     return args.join(':')
   }
 
+  /**
+   * Deletes a cacheable.
+   * @param key
+   */
   public delete(key: string): void {
-    this.clearTimeout(key)
-    this.clearValue(key)
-  }
-
-  public clear(): void {
-    Object.keys(this.cache).forEach(this.delete.bind(this))
+    delete this.cacheables[key]
   }
 
   /**
-   * Returns whether a value is present for a certain key
+   * Clears the cache by deleting all cacheables.
+   */
+  public clear(): void {
+    this.cacheables = {}
+  }
+
+  /**
+   * Returns whether a cacheable is present and valid (i.e., did not time out).
    */
   public isCached(key: string): boolean {
-    return !!this.cache[key]?.value
+    const cacheable = this.cacheables[key]
+    return !(!cacheable || cacheable.timedOut)
   }
 
   /**
    * Returns all the cache keys
    */
   public keys(): string[] {
-    return Object.keys(this.cache)
+    return Object.keys(this.cacheables)
   }
 
   /**
@@ -111,9 +100,14 @@ export class Cacheables {
       return resource()
     }
 
-    if (this.log) Logger.startLogTime(key)
+    // Persist log settings as this could be a race condition
+    const { logTiming, log } = this
+    if (logTiming) Logger.logTime(key)
+
     const result = await this.#cacheable(resource, key, timeout)
-    if (this.log) Logger.stopLogTime(key)
+
+    if (logTiming) Logger.logTimeEnd(key)
+    if (log) Logger.logStats(key, this.cacheables[key])
 
     return result
   }
@@ -123,52 +117,83 @@ export class Cacheables {
     key: string,
     timeout?: number,
   ): Promise<T> {
-    const storedResource = this.cache[key]
+    const cacheable = this.cacheables[key] as Cacheable<T> | undefined
 
-    if (storedResource === undefined) {
-      const value = await resource()
-      this.cache[key] = {
-        value,
-        hits: 0,
-        misses: 1,
-        timer: timeout
-          ? setTimeout(() => {
-              this.clearValue(key)
-            }, timeout)
-          : undefined,
-      }
-      if (this.log) Logger.logNewCacheable(key)
-      return value
+    if (!cacheable) {
+      this.cacheables[key] = await Cacheable.create(resource, timeout)
+      return this.cacheables[key]?.value
     }
 
-    const hasRetrievedValue = storedResource.value !== undefined
-    if (hasRetrievedValue) {
-      storedResource.hits += 1
-      if (this.log) Logger.logCacheHit(key, storedResource.hits)
-      return storedResource.value as T
-    } else {
-      const value = await resource()
-      this.clearTimeout(key)
-      if (timeout) {
-        storedResource.timer = setTimeout(() => {
-          this.clearValue(key)
-        }, timeout)
-      }
-      storedResource.value = value
-      storedResource.misses += 1
-      if (this.log) Logger.logCacheMiss(key, storedResource.misses)
-      return value
-    }
+    return await cacheable.touch(resource, timeout)
   }
 }
+//endregion
 
+//region Cacheable
+/**
+ * Helper class, can only be instantiated by calling its static
+ * function `create`.
+ */
+class Cacheable<T> {
+  private timingOutAt: number | undefined
+  public hits = 0
+  public misses = 1
+  public value: T
+
+  /**
+   * Cacheable Factory function. The only way to get a cacheable.
+   * @param resource
+   * @param timeout
+   */
+  static async create<T>(resource: () => Promise<T>, timeout?: number) {
+    const timesOutAt = timeout !== undefined ? Date.now() + timeout : undefined
+    const value = await resource()
+    return new Cacheable(value, timesOutAt)
+  }
+
+  private constructor(value: T, timesOutAt?: number) {
+    this.value = value
+    this.timingOutAt = timesOutAt
+  }
+
+  get timedOut(): boolean {
+    if (this.timingOutAt === undefined) return false
+    return this.timingOutAt < Date.now()
+  }
+
+  /**
+   * Get and set the value of the Cacheable.
+   * Some tricky race are conditions going on here,
+   * but this should behave as expected
+   * @param resource
+   * @param timeout
+   */
+  async touch(resource: () => Promise<T>, timeout?: number): Promise<T> {
+    if (!this.timedOut) {
+      this.hits += 1
+      this.timingOutAt =
+        timeout !== undefined ? Date.now() + timeout : undefined
+      return this.value
+    }
+    this.timingOutAt = timeout !== undefined ? Date.now() + timeout : undefined
+    this.value = await resource()
+    this.misses += 1
+    return this.value
+  }
+}
+//endregion
+
+//region Logger
+/**
+ * Logger class with static logging functions.
+ */
 class Logger {
-  static startLogTime(key: string): void {
+  static logTime(key: string): void {
     // eslint-disable-next-line no-console
     console.time(key)
   }
 
-  static stopLogTime(key: string): void {
+  static logTimeEnd(key: string): void {
     // eslint-disable-next-line no-console
     console.timeEnd(key)
   }
@@ -178,23 +203,10 @@ class Logger {
     console.log('CACHE: Caching disabled')
   }
 
-  static logCacheHit(key: string, hits: number): void {
-    // eslint-disable-next-line no-console
-    console.log(`CACHE HIT: "${key}" found, hits: ${hits}.`)
-  }
-
-  static logCacheMiss(key: string, misses: number): void {
-    // eslint-disable-next-line no-console
-    console.log(`CACHE MISS: "${key}" has no value, misses: ${misses}.`)
-  }
-
-  static logNewCacheable(key: string): void {
-    // eslint-disable-next-line no-console
-    console.log(`CACHE MISS: "${key}" not in cache yet, caching.`)
-  }
-
-  static logInvalidatingCache(key: string): void {
-    // eslint-disable-next-line no-console
-    console.log(`CACHE INVALIDATED: "${key}" invalidated.`)
+  static logStats(key: string, cacheable: Cacheable<any> | undefined) {
+    if (!cacheable) return
+    const { hits, misses } = cacheable
+    console.log(`Cacheable "${key}": hits: ${hits}, misses: ${misses}`)
   }
 }
+//endregion

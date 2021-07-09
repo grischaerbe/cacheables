@@ -140,6 +140,20 @@ Delete all cached resources. This will preserve the hit/miss counts for a cache.
 
 Returns all the cache keys
 
+### `cache.isCached(key: string): boolean`
+
+#### Arguments
+
+##### - `key: string`
+
+Returns whether a cacheable is present and valid (i.e., did not time out).
+
+#### Example
+
+```ts
+const aIsCached = cache.isCached('a')
+```
+
 ### `Cacheables.key(...args: (string | number)[]): string`
 
 A static helper function to easily build a key for a cache.

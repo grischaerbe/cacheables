@@ -20,6 +20,10 @@ A simple in-memory cache with automatic or manual cache invalidation and elegant
 npm install cacheables
 ```
 
+## Quickstart
+
+[https://codesandbox.io/s/quickstart-cacheables-5zh6h?file=/src/index.ts](https://codesandbox.io/s/quickstart-cacheables-5zh6h?file=/src/index.ts)
+
 ## Usage
 
 ```ts

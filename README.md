@@ -28,37 +28,44 @@ npm install cacheables
 
 ```ts
 // Import Cacheables
-import { Cacheables } from 'cacheables'
+import { Cacheables } from "cacheables"
+
+const apiUrl = "https://goweather.herokuapp.com/weather/Karlsruhe"
 
 // Create a new cache instance
 const cache = new Cacheables({
   logTiming: true,
+  log: true
 })
 
-// Use the method `cacheable` to set and get from the cache
-const cachedApiQuery = (locale: string) =>
-  cache.cacheable(
-    () => apiQuery(locale),
-    Cacheables.key('key', locale),
-    60e3,
-  )
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-await cachedApiQuery('de')
-// Cache miss: initial call.
-// In this example, the response of apiQuery('de') will be
-// cached for 60 seconds with the key 'key:de'.
+// Use the method `cacheable` to both set and get from the cache
+const fetchCached = (url: string, key: string, timeout?: number) => {
+  return cache.cacheable(() => fetch(url), key, timeout)
+}
 
-// key:de: 120.922ms
+const getWeatherData = async () => {
+  // Fetch weather and cache for 5 seconds.
+  const freshWeatherData = await fetchCached(apiUrl, "weather", 5e3)
+  console.log(freshWeatherData)
 
-await cachedApiQuery('de')
-// Cache hit: resource with key "key:de" is in cache.
+  // wait 2 seconds
+  await wait(2e3)
 
-// key:de: 0.029ms
+  // Fetch cached weather, set the timeout to 1 second.
+  const cachedWeatherData = await fetchCached(apiUrl, "weather", 1e3)
+  console.log(cachedWeatherData)
 
-await cachedApiQuery('en')
-// Cache miss: resource with key "key:en" is not in cache.
+  // wait 5 seconds
+  await wait(3e3)
 
-// key:en: 156.538ms
+  // Fetch again, this time the cache is not present anymore.
+  const againFreshWeatherData = await fetchCached(apiUrl, "weather")
+  console.log(againFreshWeatherData)
+}
+
+getWeatherData()
 ```
 
 `cacheable` serves both as the getter and setter. This method will return a cached resource if available or use the provided argument `resource` to fill the cache and return a value.

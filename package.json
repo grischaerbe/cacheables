@@ -1,6 +1,6 @@
 {
   "name": "cacheables",
-  "version": "0.3.2",
+  "version": "1.0.0",
   "description": "A simple in-memory cache written in Typescript with automatic cache invalidation and an elegant syntax.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

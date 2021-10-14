@@ -6,13 +6,13 @@
 
 A simple in-memory cache with automatic or manual cache invalidation and elegant syntax written in Typescript.
 
-- Elegant syntax: Wrap existing API calls in the `cacheable` method, assign a cache key and optionally a timeout to save some of those precious API calls.
+- Elegant syntax: Wrap existing API calls in the `cacheable` method, assign a cache key and optionally a maxAge to save some of those precious API calls.
 - Written in Typescript.
 - Integrated Logs: Check on the timing of your API calls.
 - Helper function to build cache keys.
 - Works in the browser and Node.js.
 - No dependencies.
-- Tested.
+- Extensively tested.
 
 ## Installation
 
@@ -41,31 +41,31 @@ const cache = new Cacheables({
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 // Use the method `cacheable` to both set and get from the cache
-const fetchCached = (url: string, key: string, timeout?: number) => {
-  return cache.cacheable(() => fetch(url), key, timeout)
-}
+// Here we set up a method `getWeatherData` that returns a Promise 
+// resolving our weather data. Depending on the maxAge `cacheable`
+// returns the remotely fetched resource or the cache value.
+// It's best practice to generate a single
+// source of truth to our cached remote resource.
+export const getWeatherData = () => cache.cacheable(() => fetch(apiUrl), 'weather', 5e3)
 
-const getWeatherData = async () => {
-  // Fetch weather and cache for 5 seconds.
-  const freshWeatherData = await fetchCached(apiUrl, "weather", 5e3)
-  console.log(freshWeatherData)
+// Fetch some fresh weather data and store it in our cache.
+const weatherData = await getWeatherData()
 
-  // wait 2 seconds
-  await wait(2e3)
+// 3 seconds later
+await wait (3e3)
 
-  // Fetch cached weather, set the timeout to 1 second.
-  const cachedWeatherData = await fetchCached(apiUrl, "weather", 1e3)
-  console.log(cachedWeatherData)
+// In this case the cached weather data is returned as the
+// maxAge of 5 seconds probably did not yet expire.
+// Please be aware that the timestamp that maxAge is checked
+//  against is set **before** the resource is fetched.
+const cachedWeatherData = await getWeatherData()
 
-  // wait 5 seconds
-  await wait(3e3)
+// Another 3 seconds later
+await wait (3e3)
 
-  // Fetch again, this time the cache is not present anymore.
-  const againFreshWeatherData = await fetchCached(apiUrl, "weather")
-  console.log(againFreshWeatherData)
-}
-
-getWeatherData()
+// Now that the maxAge of cacheable `weather` is
+// expired, the resource will be refetched and stored in our cache.
+const freshWeatherData = await getWeatherData()
 ```
 
 `cacheable` serves both as the getter and setter. This method will return a cached resource if available or use the provided argument `resource` to fill the cache and return a value.
@@ -100,7 +100,7 @@ const cache = new Cacheables({
 })
 ```
 
-### `cache.cacheable(resource, key, timeout?): Promise<T>`
+### `cache.cacheable(resource, key, maxAge?): Promise<T>`
 
 - If a resource exists in the cache (determined by the presence of a value with key `key`) `cacheable` returns the cached resource.
 - If there's no resource in the cache, the provided argument `resource` will be used to store a value with key `key` and the value is returned.
@@ -115,9 +115,9 @@ A function that returns a `Promise<T>`.
 
 A key to store the cache at.
 
-##### - `timeout?: number` (optional)
+##### - `maxAge?: number` (optional)
 
-A timeout in milliseconds after which the cache will be invalidated automatically.
+A maxAge in milliseconds after which the cache will be treated as invalid.
 
 #### Example
 
@@ -151,7 +151,7 @@ Delete all cached resources. This will preserve the hit/miss counts for a cache.
 
 Returns all the cache keys
 
-### `cache.isCached(key: string): boolean`
+### `cache.isCached(key: string, maxAge?: number): boolean`
 
 #### Arguments
 
@@ -159,10 +159,14 @@ Returns all the cache keys
 
 Returns whether a cacheable is present and valid (i.e., did not time out).
 
+##### - `maxAge?: number` (optional)
+
+A maxAge in milliseconds after which the cache will be treated as invalid.
+
 #### Example
 
 ```ts
-const aIsCached = cache.isCached('a')
+const aIsCached = cache.isCached('a', 100)
 ```
 
 ### `Cacheables.key(...args: (string | number)[]): string`

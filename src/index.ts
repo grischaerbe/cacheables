@@ -58,9 +58,24 @@ export class Cacheables {
   /**
    * Returns whether a cacheable is present and valid (i.e., did not time out).
    */
-  public isCached(key: string): boolean {
+  public isCached(key: string, maxAge?: number): boolean {
     const cacheable = this.cacheables[key]
-    return !(!cacheable || cacheable.timedOut)
+    if (!cacheable) return false
+    /**
+     * If no maxAge is provided, we assume that
+     * whatever value is present is still a valid cache
+     */
+    if (maxAge === undefined) return true
+    /**
+     * If the maxAge provided is 0, we assume that
+     * whatever value is present is invalid
+     */
+    if (maxAge === 0) return false
+    /**
+     * If a maxAge is provided, we check against
+     * the timestamp of the last fetch
+     */
+    return !cacheable.timedOut(maxAge)
   }
 
   /**
@@ -75,7 +90,7 @@ export class Cacheables {
    * that you want to cache for a certain period of time.
    * @param resource A function returning a Promise
    * @param key A key to identify the cache
-   * @param timeout A timeout in milliseconds to automatically invalidate
+   * @param maxAge A maxAge in milliseconds to automatically invalidate
    * the cache (optional)
    * @example
    * const apiResponse = await cache.cacheable(
@@ -92,7 +107,7 @@ export class Cacheables {
   public async cacheable<T>(
     resource: () => Promise<T>,
     key: string,
-    timeout?: number,
+    maxAge?: number,
   ): Promise<T> {
     const shouldCache = this.enabled
     if (!shouldCache) {
@@ -104,7 +119,7 @@ export class Cacheables {
     const { logTiming, log } = this
     if (logTiming) Logger.logTime(key)
 
-    const result = await this.#cacheable(resource, key, timeout)
+    const result = await this.#cacheable(resource, key, maxAge)
 
     if (logTiming) Logger.logTimeEnd(key)
     if (log) Logger.logStats(key, this.cacheables[key])
@@ -115,16 +130,16 @@ export class Cacheables {
   async #cacheable<T>(
     resource: () => Promise<T>,
     key: string,
-    timeout?: number,
+    maxAge?: number,
   ): Promise<T> {
     const cacheable = this.cacheables[key] as Cacheable<T> | undefined
 
     if (!cacheable) {
-      this.cacheables[key] = await Cacheable.create(resource, timeout)
+      this.cacheables[key] = await Cacheable.create(resource)
       return this.cacheables[key]?.value
     }
 
-    return await cacheable.touch(resource, timeout)
+    return await cacheable.touch(resource, maxAge)
   }
 }
 //endregion
@@ -135,30 +150,49 @@ export class Cacheables {
  * function `create`.
  */
 class Cacheable<T> {
-  private timingOutAt: number | undefined
   public hits = 0
-  public misses = 1
-  public value: T
+  public misses = 0
+  private lastFetch: number | undefined
+
+  // TODO: This feels a bit dirty
+  #value: T = undefined as unknown as T
+
+  public get value(): T {
+    return this.#value
+  }
+  private set value(v) {
+    this.#value = v
+  }
 
   /**
    * Cacheable Factory function. The only way to get a cacheable.
    * @param resource
-   * @param timeout
    */
-  static async create<T>(resource: () => Promise<T>, timeout?: number) {
-    const timesOutAt = timeout !== undefined ? Date.now() + timeout : undefined
-    const value = await resource()
-    return new Cacheable(value, timesOutAt)
+  static async create<T>(resource: () => Promise<T>) {
+    const cacheable = new Cacheable()
+    await cacheable.touch(resource)
+    return cacheable
   }
 
-  private constructor(value: T, timesOutAt?: number) {
-    this.value = value
-    this.timingOutAt = timesOutAt
+  private async fetch(resource: () => Promise<T>) {
+    this.lastFetch = Date.now()
+    this.value = await resource()
+    return this.value
   }
 
-  get timedOut(): boolean {
-    if (this.timingOutAt === undefined) return false
-    return this.timingOutAt < Date.now()
+  private async handleMiss(resource: () => Promise<T>) {
+    this.misses += 1
+    return this.fetch(resource)
+  }
+
+  private async handleHit() {
+    this.hits += 1
+    return this.value
+  }
+
+  public timedOut(maxAge: number): boolean {
+    if (!this.lastFetch) return true
+    return Date.now() > this.lastFetch + maxAge
   }
 
   /**
@@ -166,19 +200,18 @@ class Cacheable<T> {
    * Some tricky race are conditions going on here,
    * but this should behave as expected
    * @param resource
-   * @param timeout
+   * @param maxAge
    */
-  async touch(resource: () => Promise<T>, timeout?: number): Promise<T> {
-    if (!this.timedOut) {
-      this.hits += 1
-      this.timingOutAt =
-        timeout !== undefined ? Date.now() + timeout : undefined
-      return this.value
+  async touch(resource: () => Promise<T>, maxAge?: number): Promise<T> {
+    if (!this.lastFetch) {
+      return this.fetch(resource)
+    } else if (maxAge) {
+      return this.timedOut(maxAge)
+        ? this.handleMiss(resource)
+        : this.handleHit()
+    } else {
+      return this.handleHit()
     }
-    this.timingOutAt = timeout !== undefined ? Date.now() + timeout : undefined
-    this.value = await resource()
-    this.misses += 1
-    return this.value
   }
 }
 //endregion
@@ -203,7 +236,7 @@ class Logger {
     console.log('CACHE: Caching disabled')
   }
 
-  static logStats(key: string, cacheable: Cacheable<any> | undefined) {
+  static logStats(key: string, cacheable: Cacheable<any> | undefined): void {
     if (!cacheable) return
     const { hits, misses } = cacheable
     console.log(`Cacheable "${key}": hits: ${hits}, misses: ${misses}`)

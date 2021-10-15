@@ -15,6 +15,7 @@ A simple in-memory cache with support of different cache policies and elegant sy
 - Works in the browser and Node.js.
 - **No dependencies**.
 - Extensively tested.
+- **Small**: 1.43 kB minified and gzipped.
 
 ```ts
 // without caching
@@ -69,30 +70,39 @@ const cache = new Cacheables({
   log: true
 })
 
-// Wrap the existing API call `fetch(apiUrl)` and assign a cache 
-// key `weather` to it. This example uses the cache policy 'max-age' 
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+// Wrap the existing API call `fetch(apiUrl)` and assign a cache
+// key `weather` to it. This example uses the cache policy 'max-age'
 // which invalidates the cache after a certain time.
 // The method returns a fully typed Promise just like `fetch(apiUrl)`
 // would but with the benefit of caching the result.
-const getWeatherData = () => cache.cacheable(() => fetch(apiUrl), 'weather', {
-  cachePolicy: 'max-age',
-  maxAge: 5e3
-})
+const getWeatherData = () =>
+  cache.cacheable(() => fetch(apiUrl), 'weather', {
+    cachePolicy: 'max-age',
+    maxAge: 5e3,
+  })
 
-// Fetch some fresh weather data and store it in our cache.
-const weatherData = await getWeatherData()
+const start = async () => {
+  // Fetch some fresh weather data and store it in our cache.
+  const weatherData = await getWeatherData()
 
-/** 3 seconds later **/
+  /** 3 seconds later **/
+  await wait(3e3)
 
-// The cached weather data is returned as the
-// maxAge of 5 seconds did not yet expire.
-const cachedWeatherData = await getWeatherData()
+  // The cached weather data is returned as the
+  // maxAge of 5 seconds did not yet expire.
+  const cachedWeatherData = await getWeatherData()
 
-/** Another 3 seconds later **/
+  /** Another 3 seconds later **/
+  await wait(3e3)
 
-// Now that the maxAge is expired, the resource 
-// will be fetched and stored in our cache. 
-const freshWeatherData = await getWeatherData()
+  // Now that the maxAge is expired, the resource
+  // will be fetched and stored in our cache.
+  const freshWeatherData = await getWeatherData()
+}
+
+start()
 ```
 
 `cacheable` serves both as the getter and setter. This method will return a cached resource if available or use the provided argument `resource` to fill the cache and return a value.

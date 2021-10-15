@@ -1,10 +1,11 @@
 {
   "name": "cacheables",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "A simple in-memory cache written in Typescript with automatic cache invalidation and an elegant syntax.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
+    "size": "size-limit",
     "test": "jest",
     "test:watch": "jest --watch",
     "typecheck": "tsc --noEmit",
@@ -16,6 +17,11 @@
     "type": "git",
     "url": "git+https://github.com/grischaerbe/cacheables.git"
   },
+  "size-limit": [
+    {
+      "path": "./dist/index.js"
+    }
+  ],
   "keywords": [
     "node",
     "browser",
@@ -32,6 +38,7 @@
   },
   "homepage": "https://github.com/grischaerbe/cacheables#readme",
   "devDependencies": {
+    "@size-limit/preset-small-lib": "^6.0.3",
     "@types/jest": "^26.0.23",
     "@typescript-eslint/eslint-plugin": "^4.28.1",
     "@typescript-eslint/parser": "^4.28.1",
@@ -40,6 +47,7 @@
     "eslint-plugin-prettier": "^3.4.0",
     "jest": "^27.0.6",
     "prettier": "^2.3.2",
+    "size-limit": "^6.0.3",
     "ts-jest": "^27.0.3",
     "typescript": "^4.3.5"
   }

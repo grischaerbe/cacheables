@@ -1,12 +1,12 @@
-import { Cacheables } from '../src'
+import { CacheableOptions, Cacheables } from '../src'
 
 const errorMessage = 'This is an error message.'
 
-const mockedApiRequest = (
-  value: number | string,
+const mockedApiRequest = <T extends any>(
+  value: T,
   duration = 0,
   reject = false,
-) =>
+): Promise<T> =>
   new Promise((resolve, r) => {
     if (reject) r(errorMessage)
     if (duration > 0) {
@@ -33,17 +33,6 @@ describe('Cache operations', () => {
     expect(cachedValue).toEqual(value)
   })
 
-  it('Invalidates correctly', async () => {
-    const cache = new Cacheables()
-
-    await cache.cacheable(() => mockedApiRequest('someValue', 10), 'a')
-
-    expect(cache.isCached('a', 100)).toEqual(true)
-    await wait(150)
-    expect(cache.isCached('a', 100)).toEqual(false)
-    expect(cache.keys()).toEqual(['a'])
-  })
-
   it('Stores multiple caches', async () => {
     const cache = new Cacheables()
 
@@ -61,28 +50,6 @@ describe('Cache operations', () => {
 
     expect(cache.keys().sort()).toEqual(['a', 'b'].sort())
     expect([cachedValueA, cachedValueB]).toEqual([valueA, valueB])
-  })
-
-  it('Invalidates the correct value', async () => {
-    const cache = new Cacheables()
-
-    const cacheTimeoutA = 100
-    const cacheTimeoutB = 200
-
-    await cache.cacheable(() => mockedApiRequest('valueA'), 'a', cacheTimeoutA)
-    await cache.cacheable(() => mockedApiRequest('valueB'), 'b', cacheTimeoutB)
-
-    expect(cache.isCached('a', cacheTimeoutA)).toEqual(true)
-    expect(cache.isCached('b', cacheTimeoutB)).toEqual(true)
-    expect(cache.keys().sort()).toEqual(['a', 'b'].sort())
-    await wait(150)
-    expect(cache.isCached('a', cacheTimeoutA)).toEqual(false)
-    expect(cache.isCached('b', cacheTimeoutB)).toEqual(true)
-    expect(cache.keys().sort()).toEqual(['a', 'b'].sort())
-    await wait(100)
-    expect(cache.isCached('a', cacheTimeoutA)).toEqual(false)
-    expect(cache.isCached('b', cacheTimeoutB)).toEqual(false)
-    expect(cache.keys().sort()).toEqual(['a', 'b'].sort())
   })
 
   it('Deletes values', async () => {
@@ -134,19 +101,17 @@ describe('Cache operations', () => {
       enabled: false,
     })
 
-    await cache.cacheable(() => mockedApiRequest(1), 'a')
+    const cachedRequest = () => cache.cacheable(() => mockedApiRequest(1), 'a')
+
+    await cachedRequest()
     expect(console.log).lastCalledWith('CACHE: Caching disabled')
     cache.enabled = true
 
-    await cache.cacheable(() => mockedApiRequest(1), 'a')
-    expect(console.log).lastCalledWith('Cacheable "a": hits: 0, misses: 0')
+    await cachedRequest()
+    expect(console.log).lastCalledWith('Cacheable "a": hits: 0')
 
-    await cache.cacheable(() => mockedApiRequest(1), 'a', 50)
-    expect(console.log).lastCalledWith('Cacheable "a": hits: 1, misses: 0')
-
-    await wait(100)
-    await cache.cacheable(() => mockedApiRequest(1), 'a', 50)
-    expect(console.log).lastCalledWith('Cacheable "a": hits: 1, misses: 1')
+    await cachedRequest()
+    expect(console.log).lastCalledWith('Cacheable "a": hits: 1')
   })
 
   /**
@@ -159,21 +124,27 @@ describe('Cache operations', () => {
   it('Handles race conditions correctly', async () => {
     const cache = new Cacheables()
 
-    // Create a cache that times out at 100 and resolves at 10
-    const a = await cache.cacheable(() => mockedApiRequest(0, 10), 'a', 100)
-    expect(a).toEqual(0)
+    const racingCache = (v: any) =>
+      cache.cacheable(() => mockedApiRequest(v, 50), 'a', {
+        cachePolicy: 'max-age',
+        maxAge: 100,
+      })
 
-    // The time is ~10, the cache should not be invalidated
-    // yet, this should bea cache hit and should resolve value 'a'.
-    // Nevertheless let the cache time out at 100.
-    const b = await cache.cacheable(() => mockedApiRequest(1, 100), 'a', 100)
-    expect(b).toEqual(0)
+    // Create a cache that times out at 100 and resolves at 50
+    const a = await racingCache('a')
+    expect(a).toEqual('a')
 
+    // The time is ~50, the cache should not be invalidated
+    // yet, this should be a cache hit and should resolve value 'a' immediately.
+    const b = await racingCache('b')
+    expect(b).toEqual('a')
+
+    // maxAge of previous requests expired
     await wait(200)
 
-    // The time is ~(10 + 200 = 210) and the cache should be invalidated.
-    const c = await cache.cacheable(() => mockedApiRequest(2), 'a', 100)
-    expect(c).toEqual(2)
+    // The time is ~(50 + 200 = 250) and the cache should be invalidated.
+    const c = await racingCache('c')
+    expect(c).toEqual('c')
   })
 
   it('Handles multiple calls correctly', async () => {
@@ -184,34 +155,37 @@ describe('Cache operations', () => {
     })
 
     const hitCache = async () => {
-      await cache.cacheable(() => mockedApiRequest(0, 10), 'a', 100)
+      await cache.cacheable(() => mockedApiRequest(0, 10), 'a', {
+        cachePolicy: 'max-age',
+        maxAge: 100,
+      })
     }
 
     // This should be a miss and take ~10ms
     await hitCache()
-    expect(console.log).lastCalledWith('Cacheable "a": hits: 0, misses: 0')
+    expect(console.log).lastCalledWith('Cacheable "a": hits: 0')
 
     // This should be a hit and take ~0ms
     await hitCache()
-    expect(console.log).lastCalledWith('Cacheable "a": hits: 1, misses: 0')
+    expect(console.log).lastCalledWith('Cacheable "a": hits: 1')
 
     await wait(60)
 
     // This should be a hit and take ~0ms
     await hitCache()
-    expect(console.log).lastCalledWith('Cacheable "a": hits: 2, misses: 0')
+    expect(console.log).lastCalledWith('Cacheable "a": hits: 2')
 
     await wait(60)
 
     // This should be a miss and take ~10ms
     await hitCache()
-    expect(console.log).lastCalledWith('Cacheable "a": hits: 2, misses: 1')
+    expect(console.log).lastCalledWith('Cacheable "a": hits: 2')
   })
 
   it("Doesn't interfere with error handling", async () => {
     const cache = new Cacheables()
     const rejecting = () => {
-      return cache.cacheable(() => mockedApiRequest(0, 10, true), 'a', 100)
+      return cache.cacheable(() => mockedApiRequest(0, 10, true), 'a')
     }
     await expect(rejecting).rejects.toEqual(errorMessage)
   })

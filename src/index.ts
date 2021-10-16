@@ -143,7 +143,7 @@ export class Cacheables {
     return result
   }
 
-  async #cacheable<T>(
+  #cacheable<T>(
     resource: () => Promise<T>,
     key: string,
     options?: CacheableOptions,
@@ -155,7 +155,7 @@ export class Cacheables {
       this.#cacheables[key] = cacheable
     }
 
-    return await cacheable.touch(resource, options)
+    return cacheable.touch(resource, options)
   }
 }
 //endregion

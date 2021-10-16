@@ -114,7 +114,7 @@ export class Cacheables {
    *     variables: someVariables,
    *   }),
    *   Cache.key('type', someCacheKey, someOtherCacheKey),
-   *   60e3
+   *   60000
    * )
    * @returns promise Resolves to the value of the provided resource, either from
    * cache or from the remote resource itself.

@@ -80,7 +80,7 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const getWeatherData = () =>
   cache.cacheable(() => fetch(apiUrl), 'weather', {
     cachePolicy: 'max-age',
-    maxAge: 5e3,
+    maxAge: 5000,
   })
 
 const start = async () => {
@@ -88,14 +88,14 @@ const start = async () => {
   const weatherData = await getWeatherData()
 
   /** 3 seconds later **/
-  await wait(3e3)
+  await wait(3000)
 
   // The cached weather data is returned as the
   // maxAge of 5 seconds did not yet expire.
   const cachedWeatherData = await getWeatherData()
 
   /** Another 3 seconds later **/
-  await wait(3e3)
+  await wait(3000)
 
   // Now that the maxAge is expired, the resource
   // will be fetched and stored in our cache.
@@ -174,7 +174,7 @@ const cachedApiResponse = await cache.cacheable(
   'key',
   {
     cachePolicy: 'max-age',
-    maxAge: 10e3
+    maxAge: 10000
   }
 )
 ```

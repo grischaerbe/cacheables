@@ -117,4 +117,34 @@ describe('Fetch Policies', () => {
 
     expect([a, b, c, d, e, f]).toEqual([-1, -1, -1, 0, 0, 0])
   })
+
+  it('stale-while-revalidate with maxAge', async () => {
+    const cache = new Cacheables()
+
+    const SWRCacheable = (v: any) =>
+      cache.cacheable(() => mockedApiRequest(v, 50), 'key', {
+        cachePolicy: 'stale-while-revalidate',
+        maxAge: 200,
+      })
+
+    // Preheat cache, takes ~50ms
+    await SWRCacheable(0)
+
+    await wait(100)
+
+    // ~150ms on the clock, maxAge not reached
+    const a = await SWRCacheable(1)
+
+    await wait(100)
+
+    // ~250ms on the clock, maxAge reached, cache updates silently
+    const b = await SWRCacheable(2)
+
+    await wait(100)
+
+    // ~350ms on the clock, cache should be updated silently with value `2`
+    const c = await SWRCacheable(3)
+
+    expect([a, b, c]).toEqual([0, 0, 2])
+  })
 })

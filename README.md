@@ -162,7 +162,7 @@ See [Cache Policies](#cache-policies).
 ```ts
 type CacheableOptions = {
   cachePolicy: 'cache-only' | 'network-only-non-concurrent' | 'network-only' | 'max-age' | 'stale-while-revalidate' // See cache policies for details
-  maxAge?: number // Required if cache policy is `max-age`
+  maxAge?: number // Required if cache policy is `max-age` and optional if cache policy is `stale-while-revalidate`
 }
 ```
 
@@ -238,7 +238,7 @@ Each policy has different behaviour when it comes to preheating the cache (i.e. 
 | `network-only`                | All requests should be handled by the network.<br>Simultaneous requests trigger simultaneous network requests.                                                                                                                                                          |
 | `network-only-non-concurrent` | All requests should be handled by the network but no concurrent network requests are allowed.<br>All requests made in the timeframe of a network request are resolved once that is finished.                                                                            |
 | `max-age`                     | All requests should be checked against max-age.<br>If max-age is expired, a network request is triggered.<br>All requests made in the timeframe of a network request are resolved once that is finished.                                                                |
-| `stale-while-revalidate`      | All requests immediately return a cached value.<br>If no network request is running, a network request is triggered, 'silently' updating the cache in the background.<br>After the network request finished, subsequent requests will receive the updated cached value. |
+| `stale-while-revalidate`      | All requests immediately return a cached value.<br>If no network request is running and maxAge is provided and reached or maxAge is not provided, a network request is triggered, 'silently' updating the cache in the background.<br>After the network request finished, subsequent requests will receive the updated cached value. |
 
 ### Cache Only (default)
 
@@ -286,12 +286,21 @@ cache.cacheable(() => fetch(url), 'a', {
 
 ### Stale While Revalidate
 
-The cache policy `stale-while-revalidate` will return a cached value immediately and – if there is no network request already running – trigger a network request to 'silently' update the cache in the background.
+The cache policy `stale-while-revalidate` will return a cached value immediately and – if there is no network request already running and `maxAge` is either provided and reached or not provided – trigger a network request to 'silently' update the cache in the background.
 
-##### Example
+##### Example without `maxAge`
 ```ts
 // If there is a cache, return it but 'silently' update the cache.
 cache.cacheable(() => fetch(url), 'a', { cachePolicy: 'stale-while-revalidate'})
+```
+
+##### Example with `maxAge`
+```ts
+// If there is a cache, return it and 'silently' update the cache if it's older than 1 second.
+cache.cacheable(() => fetch(url), 'a', {
+  cachePolicy: 'stale-while-revalidate',
+  maxAge: 1000
+})
 ```
 
 ### Cache Policy Composition

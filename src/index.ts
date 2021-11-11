@@ -33,6 +33,7 @@ type MaxAgeCachePolicy = {
 
 type SWRCachePolicy = {
   cachePolicy: 'stale-while-revalidate'
+  maxAge?: number
 }
 
 /**
@@ -167,12 +168,12 @@ export class Cacheables {
  */
 class Cacheable<T> {
   hits = 0
-  #lastFetch: number | undefined
+  #lastFetch = 0
   #initialized = false
   #promise: Promise<T> | undefined
 
-  #isFetching(p: Promise<T> | undefined): p is Promise<T> {
-    return !!p
+  get #isFetching() {
+    return !!this.#promise
   }
 
   #value: T = undefined as unknown as T
@@ -191,7 +192,7 @@ class Cacheable<T> {
   }
 
   async #fetchNonConcurrent(resource: () => Promise<T>): Promise<T> {
-    if (this.#isFetching(this.#promise)) {
+    if (this.#isFetching) {
       await this.#promise
       this.#logHit()
       return this.#value
@@ -232,15 +233,20 @@ class Cacheable<T> {
   }
 
   #handleMaxAge(resource: () => Promise<T>, maxAge: number) {
-    if (!this.#lastFetch || Date.now() > this.#lastFetch + maxAge) {
+    if (Date.now() > this.#lastFetch + maxAge) {
       return this.#fetchNonConcurrent(resource)
     }
     this.#logHit()
     return this.#value
   }
 
-  #handleSwr(resource: () => Promise<T>): T {
-    if (!this.#isFetching(this.#promise)) this.#fetchNonConcurrent(resource)
+  #handleSwr(resource: () => Promise<T>, maxAge?: number): T {
+    if (
+      !this.#isFetching &&
+      ((maxAge && Date.now() > this.#lastFetch + maxAge) || !maxAge)
+    ) {
+      this.#fetchNonConcurrent(resource)
+    }
     this.#logHit()
     return this.#value
   }
@@ -268,7 +274,7 @@ class Cacheable<T> {
       case 'network-only':
         return this.#handleNetworkOnly(resource)
       case 'stale-while-revalidate':
-        return this.#handleSwr(resource)
+        return this.#handleSwr(resource, options.maxAge)
       case 'max-age':
         return this.#handleMaxAge(resource, options.maxAge)
       case 'network-only-non-concurrent':

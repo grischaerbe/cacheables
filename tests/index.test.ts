@@ -1,4 +1,4 @@
-import { CacheableOptions, Cacheables } from '../src'
+import { Cacheables } from '../src'
 
 const errorMessage = 'This is an error message.'
 

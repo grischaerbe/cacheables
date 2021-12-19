@@ -15,7 +15,7 @@ A simple in-memory cache with support of different cache policies and elegant sy
 - Works in the browser and Node.js.
 - **No dependencies**.
 - Extensively tested.
-- **Small**: 1.43 kB minified and gzipped.
+- **Small**: 1.7 kB minified and gzipped.
 
 ```ts
 // without caching

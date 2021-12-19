@@ -1,4 +1,7 @@
 //region Types
+import { CacheAdapter } from './adapters/CacheAdapter'
+import { InMemoryCacheAdapter } from './adapters/InMemoryCacheAdapter'
+
 export type CacheOptions = {
   /**
    * Enables caching
@@ -12,6 +15,10 @@ export type CacheOptions = {
    * Enable/disable timings
    */
   logTiming?: boolean
+  /**
+   * TODO
+   */
+  adapter?: CacheAdapter
 }
 
 type CacheOnlyCachePolicy = {
@@ -56,11 +63,13 @@ export class Cacheables {
   enabled: boolean
   log: boolean
   logTiming: boolean
+  #adapter: CacheAdapter
 
   constructor(options?: CacheOptions) {
     this.enabled = options?.enabled ?? true
     this.log = options?.log ?? false
     this.logTiming = options?.logTiming ?? false
+    this.#adapter = options?.adapter ?? new InMemoryCacheAdapter()
   }
 
   #cacheables: Record<string, Cacheable<any>> = {}
@@ -152,7 +161,7 @@ export class Cacheables {
     let cacheable = this.#cacheables[key] as Cacheable<T> | undefined
 
     if (!cacheable) {
-      cacheable = new Cacheable()
+      cacheable = new Cacheable(key, this.#adapter)
       this.#cacheables[key] = cacheable
     }
 
@@ -169,14 +178,24 @@ export class Cacheables {
 class Cacheable<T> {
   hits = 0
   #lastFetch = 0
-  #initialized = false
   #promise: Promise<T> | undefined
+  #adapter: CacheAdapter
+  readonly #key: string
+
+  constructor(key: string, adapter: CacheAdapter) {
+    this.#key = key
+    this.#adapter = adapter
+  }
 
   get #isFetching() {
     return !!this.#promise
   }
 
   #value: T = undefined as unknown as T
+
+  #getFromCache(): Promise<T> {
+    return this.#adapter.get(this.#key)
+  }
 
   #logHit() {
     this.hits += 1
@@ -185,17 +204,18 @@ class Cacheable<T> {
   async #fetch(resource: () => Promise<T>): Promise<T> {
     this.#lastFetch = Date.now()
     this.#promise = resource()
-    this.#value = await this.#promise
+    const value = await this.#promise
+    await this.#adapter.put(this.#key, value)
     if (!this.#initialized) this.#initialized = true
     this.#promise = undefined
-    return this.#value
+    return value
   }
 
   async #fetchNonConcurrent(resource: () => Promise<T>): Promise<T> {
     if (this.#isFetching) {
-      await this.#promise
+      const value = (await this.#promise) as T
       this.#logHit()
-      return this.#value
+      return value
     }
     return this.#fetch(resource)
   }
@@ -219,9 +239,9 @@ class Cacheable<T> {
     }
   }
 
-  #handleCacheOnly(): T {
+  #handleCacheOnly(): Promise<T> {
     this.#logHit()
-    return this.#value
+    return this.#getFromCache()
   }
 
   #handleNetworkOnly(resource: () => Promise<T>): Promise<T> {
@@ -232,15 +252,15 @@ class Cacheable<T> {
     return this.#fetchNonConcurrent(resource)
   }
 
-  #handleMaxAge(resource: () => Promise<T>, maxAge: number) {
+  #handleMaxAge(resource: () => Promise<T>, maxAge: number): Promise<T> {
     if (Date.now() > this.#lastFetch + maxAge) {
       return this.#fetchNonConcurrent(resource)
     }
     this.#logHit()
-    return this.#value
+    return this.#getFromCache()
   }
 
-  #handleSwr(resource: () => Promise<T>, maxAge?: number): T {
+  #handleSwr(resource: () => Promise<T>, maxAge?: number): Promise<T> {
     if (
       !this.#isFetching &&
       ((maxAge && Date.now() > this.#lastFetch + maxAge) || !maxAge)
@@ -248,7 +268,19 @@ class Cacheable<T> {
       this.#fetchNonConcurrent(resource)
     }
     this.#logHit()
-    return this.#value
+    return this.#getFromCache()
+  }
+
+  #initialized = false
+  async #isInitialized() {
+    if (this.#initialized) return true
+    const cachePopulated = await this.#adapter.has(this.#key)
+    if (cachePopulated) {
+      this.#initialized = true
+      return true
+    } else {
+      return false
+    }
   }
 
   /**
@@ -262,7 +294,7 @@ class Cacheable<T> {
     resource: () => Promise<T>,
     options?: CacheableOptions,
   ): Promise<T> {
-    if (!this.#initialized) {
+    if (!(await this.#isInitialized())) {
       return this.#handlePreInit(resource, options)
     }
     if (!options) {

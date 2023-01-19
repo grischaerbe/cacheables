@@ -189,4 +189,14 @@ describe('Cache operations', () => {
     }
     await expect(rejecting).rejects.toEqual(errorMessage)
   })
+
+  it("Doesn't cache rejected value", async () => {
+    const cache = new Cacheables()
+    let errNo = 1
+    const rejecting = () => {
+      return cache.cacheable(() => Promise.reject(errNo++), 'a')
+    }
+    await expect(rejecting()).rejects.toEqual(1)
+    await expect(rejecting()).rejects.toEqual(2)
+  })
 })

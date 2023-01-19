@@ -1,6 +1,6 @@
 {
-  "name": "cacheables",
-  "version": "1.2.2",
+  "name": "@hodlen/cacheables",
+  "version": "1.2.3",
   "description": "A simple in-memory cache written in Typescript with automatic cache invalidation and an elegant syntax.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -15,7 +15,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/grischaerbe/cacheables.git"
+    "url": "git+https://github.com/hodlen/cacheables.git"
   },
   "size-limit": [
     {
@@ -31,12 +31,19 @@
     "cacheable",
     "cacheables"
   ],
-  "author": "Grischa Erbe <grischa.erbe@googlemail.com>",
+  "contributors": [
+    {
+      "author": "Grischa Erbe <grischa.erbe@googlemail.com>"
+    },
+    {
+      "author": "Holden <hodlenx@gmail.com>"
+    }
+  ],
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/grischaerbe/cacheables/issues"
+    "url": "https://github.com/hodlen/cacheables/issues"
   },
-  "homepage": "https://github.com/grischaerbe/cacheables#readme",
+  "homepage": "https://github.com/hodlen/cacheables#readme",
   "devDependencies": {
     "@size-limit/preset-small-lib": "^6.0.3",
     "@types/jest": "^26.0.23",

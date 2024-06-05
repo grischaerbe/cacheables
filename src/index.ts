@@ -185,9 +185,12 @@ class Cacheable<T> {
   async #fetch(resource: () => Promise<T>): Promise<T> {
     this.#lastFetch = Date.now()
     this.#promise = resource()
-    this.#value = await this.#promise
-    if (!this.#initialized) this.#initialized = true
-    this.#promise = undefined
+    try {
+      this.#value = await this.#promise
+      if (!this.#initialized) this.#initialized = true
+    } finally {
+      this.#promise = undefined
+    }
     return this.#value
   }
 

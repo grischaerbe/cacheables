@@ -1,9 +1,10 @@
 {
   "compilerOptions": {
-    "target": "ES6",
-    "module": "commonjs",
+    "target": "ESNext",
+    "module": "ESNext",
     "declaration": true,
-    "lib": ["es2015", "DOM"],
+    "lib": ["ESNext", "DOM"],
+    "moduleResolution": "Node",
     "outDir": "./dist",
     "rootDir": "./src",
     "removeComments": false,

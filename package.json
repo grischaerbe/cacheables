@@ -2,16 +2,24 @@
   "name": "cacheables",
   "version": "1.2.3",
   "description": "A simple in-memory cache written in Typescript with automatic cache invalidation and an elegant syntax.",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/cjs/index.js",
+  "module": "dist/mjs/index.js",
+  "types": "dist/mjs/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/mjs/index.js",
+      "require": "./dist/cjs/index.js",
+      "types": "./dist/mjs/index.d.ts"
+    }
+  },
   "scripts": {
     "size": "size-limit",
     "test": "jest",
     "test:watch": "jest --watch",
     "typecheck": "tsc --noEmit",
     "eslint": "eslint --fix src/**/*.ts",
-    "prepublish": "npm run eslint && npm run typecheck && npm run build && npm test",
-    "build": "tsc"
+    "prepublish": "npm run eslint && npm run typecheck && npm test && npm run build",
+    "build": "rimraf dist && tsc -p tsconfig.mjs.json && tsc -p tsconfig.cjs.json && tsx ./fixup-packages.ts"
   },
   "repository": {
     "type": "git",
@@ -47,8 +55,10 @@
     "eslint-plugin-prettier": "^3.4.0",
     "jest": "^27.0.6",
     "prettier": "^2.3.2",
+    "rimraf": "^5.0.7",
     "size-limit": "^6.0.3",
     "ts-jest": "^27.0.3",
+    "tsx": "^4.11.2",
     "typescript": "^4.3.5"
   }
 }

@@ -15,7 +15,8 @@ export type CacheOptions = {
    */
   logTiming?: boolean
   /**
-   * Enable/disable timings
+   * Provides an object that conforms to 
+   * CacheConnector to implement custom cache backends
    */
   cacheConnector?: CacheConnector
 }

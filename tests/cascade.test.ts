@@ -1,26 +1,30 @@
 import { Cacheable } from '../src'
-import type { IBaseMeta, IBucket } from '../src'
+import type { BucketEntryMeta, IBucket } from '../src'
 
 interface WriteCall {
   key: string
   value: unknown
-  meta: IBaseMeta | undefined
+  meta: BucketEntryMeta
 }
 
-class FakeBucket implements IBucket<IBaseMeta> {
-  store = new Map<string, { value: unknown; meta: IBaseMeta }>()
+class FakeBucket implements IBucket<void> {
+  store = new Map<string, { value: unknown; meta: BucketEntryMeta }>()
 
   readCalls = 0
   metaCalls = 0
+  resolveCalls = 0
   writeCalls: WriteCall[] = []
   deleteCalls: string[] = []
   clearCalls = 0
 
   throwOn: Partial<
-    Record<'read' | 'meta' | 'write' | 'delete' | 'clear', boolean>
+    Record<
+      'read' | 'meta' | 'resolve' | 'write' | 'delete' | 'clear',
+      boolean
+    >
   > = {}
 
-  constructor(seed?: { key: string; value: unknown; meta: IBaseMeta }) {
+  constructor(seed?: { key: string; value: unknown; meta: BucketEntryMeta }) {
     if (seed) this.store.set(seed.key, { value: seed.value, meta: seed.meta })
   }
 
@@ -31,19 +35,25 @@ class FakeBucket implements IBucket<IBaseMeta> {
     return entry === undefined ? undefined : { value: entry.value as T }
   }
 
-  async write<T>(key: string, value: T, meta?: IBaseMeta): Promise<void> {
+  async write<T>(
+    key: string,
+    value: T,
+    meta: BucketEntryMeta,
+  ): Promise<void> {
     this.writeCalls.push({ key, value, meta })
     if (this.throwOn.write) throw new Error('write failed')
-    this.store.set(key, {
-      value,
-      meta: meta ?? { storedAt: Date.now() },
-    })
+    this.store.set(key, { value, meta })
   }
 
-  async meta(key: string): Promise<IBaseMeta | undefined> {
+  async meta(key: string): Promise<BucketEntryMeta | undefined> {
     this.metaCalls += 1
     if (this.throwOn.meta) throw new Error('meta failed')
     return this.store.get(key)?.meta
+  }
+
+  async resolve(_key: string): Promise<void> {
+    this.resolveCalls += 1
+    if (this.throwOn.resolve) throw new Error('resolve failed')
   }
 
   async delete(key: string): Promise<void> {
@@ -61,7 +71,7 @@ class FakeBucket implements IBucket<IBaseMeta> {
 
 describe('cascade behavior', () => {
   it('L1 hit: does not read L2, probes L2 once, no writes', async () => {
-    const seedMeta: IBaseMeta = { storedAt: Date.now() }
+    const seedMeta: BucketEntryMeta = { storedAt: Date.now() }
     const l1 = new FakeBucket({ key: 'test:k', value: 'v', meta: seedMeta })
     const l2 = new FakeBucket()
     const cache = new Cacheable('test', { buckets: [l1, l2] })
@@ -74,13 +84,13 @@ describe('cascade behavior', () => {
     expect(l2.metaCalls).toBe(1)
     // L2 had no entry → backfill writes once with L1's meta.
     expect(l2.writeCalls.length).toBe(1)
-    expect(l2.writeCalls[0]!.meta?.storedAt).toBe(seedMeta.storedAt)
+    expect(l2.writeCalls[0]!.meta.storedAt).toBe(seedMeta.storedAt)
     // L1 already had it → no L1 write.
     expect(l1.writeCalls.length).toBe(0)
   })
 
   it('L1 hit + L2 already has it: no writes anywhere', async () => {
-    const seedMeta: IBaseMeta = { storedAt: 1000 }
+    const seedMeta: BucketEntryMeta = { storedAt: 1000 }
     const l1 = new FakeBucket({ key: 'test:k', value: 'v', meta: seedMeta })
     const l2 = new FakeBucket({
       key: 'test:k',
@@ -96,7 +106,7 @@ describe('cascade behavior', () => {
   })
 
   it('L1 miss + L2 hit: L1 backfilled with L2 meta (storedAt preserved)', async () => {
-    const l2Meta: IBaseMeta = { storedAt: 12345 }
+    const l2Meta: BucketEntryMeta = { storedAt: 12345 }
     const l1 = new FakeBucket()
     const l2 = new FakeBucket({ key: 'test:k', value: 'v2', meta: l2Meta })
     const cache = new Cacheable('test', { buckets: [l1, l2] })
@@ -106,7 +116,7 @@ describe('cascade behavior', () => {
     expect(result).toEqual('v2')
     expect(l1.writeCalls.length).toBe(1)
     expect(l1.writeCalls[0]!.value).toBe('v2')
-    expect(l1.writeCalls[0]!.meta?.storedAt).toBe(l2Meta.storedAt)
+    expect(l1.writeCalls[0]!.meta.storedAt).toBe(l2Meta.storedAt)
     // L2 already had it → no extra L2 write.
     expect(l2.writeCalls.length).toBe(0)
     expect(l2.readCalls).toBe(1)
@@ -130,19 +140,17 @@ describe('cascade behavior', () => {
 
     expect(l1.writeCalls.length).toBe(1)
     expect(l1.writeCalls[0]!.value).toBe('fresh')
-    const l1WriteMeta = l1.writeCalls[0]!.meta!
-    expect(l1WriteMeta).toBeDefined()
+    const l1WriteMeta = l1.writeCalls[0]!.meta
     expect(l1WriteMeta.storedAt).toBeGreaterThanOrEqual(before)
     expect(l1WriteMeta.storedAt).toBeLessThanOrEqual(after)
 
     expect(l2.writeCalls.length).toBe(1)
     expect(l2.writeCalls[0]!.value).toBe('fresh')
-    const l2WriteMeta = l2.writeCalls[0]!.meta!
-    expect(l2WriteMeta.storedAt).toBe(l1WriteMeta.storedAt)
+    expect(l2.writeCalls[0]!.meta.storedAt).toBe(l1WriteMeta.storedAt)
   })
 
   it('3 layers, L3 hit: L1 and L2 both filled with L3 meta', async () => {
-    const l3Meta: IBaseMeta = { storedAt: 42 }
+    const l3Meta: BucketEntryMeta = { storedAt: 42 }
     const l1 = new FakeBucket()
     const l2 = new FakeBucket()
     const l3 = new FakeBucket({ key: 'test:k', value: 'deep', meta: l3Meta })
@@ -154,8 +162,8 @@ describe('cascade behavior', () => {
     expect(l1.writeCalls.length).toBe(1)
     expect(l2.writeCalls.length).toBe(1)
     expect(l3.writeCalls.length).toBe(0)
-    expect(l1.writeCalls[0]!.meta?.storedAt).toBe(42)
-    expect(l2.writeCalls[0]!.meta?.storedAt).toBe(42)
+    expect(l1.writeCalls[0]!.meta.storedAt).toBe(42)
+    expect(l2.writeCalls[0]!.meta.storedAt).toBe(42)
   })
 
   it('max-age across layers: stale L1 with fresh L2 returns L2 value', async () => {
@@ -238,7 +246,7 @@ describe('cascade behavior', () => {
     expect(l2.clearCalls).toBe(1)
   })
 
-  it('meta returns highest-priority layer meta', async () => {
+  it('cascade fill propagates highest-priority layer meta to lower layers', async () => {
     const l1 = new FakeBucket()
     const l2 = new FakeBucket({
       key: 'test:k',
@@ -247,11 +255,13 @@ describe('cascade behavior', () => {
     })
     const cache = new Cacheable('test', { buckets: [l1, l2] })
 
-    expect(await cache.meta('k')).toEqual({ storedAt: 999 })
+    expect((await l1.meta('test:k'))?.storedAt).toBeUndefined()
+    expect((await l2.meta('test:k'))?.storedAt).toBe(999)
 
     await cache.remember(async () => 'fresh', 'k')
-    // Now L1 is filled with L2 meta.
-    expect((await cache.meta('k'))?.storedAt).toBe(999)
+
+    // L1 is now backfilled with L2's storedAt verbatim.
+    expect((await l1.meta('test:k'))?.storedAt).toBe(999)
   })
 
   it('caches resources that resolve to undefined', async () => {

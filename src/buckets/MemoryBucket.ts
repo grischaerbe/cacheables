@@ -1,23 +1,22 @@
-import type { IBaseMeta, IBucket } from '../types'
+import type { BucketEntryMeta, IBucket } from '../types'
 
-export class MemoryBucket implements IBucket<IBaseMeta> {
-  #store = new Map<string, { value: unknown; meta: IBaseMeta }>()
+export class MemoryBucket implements IBucket<void> {
+  #store = new Map<string, { value: unknown; meta: BucketEntryMeta }>()
 
   async read<T>(key: string): Promise<{ value: T } | undefined> {
     const entry = this.#store.get(key)
     return entry === undefined ? undefined : { value: entry.value as T }
   }
 
-  async write<T>(key: string, value: T, meta?: IBaseMeta): Promise<void> {
-    this.#store.set(key, {
-      value,
-      meta: meta ?? ({ storedAt: Date.now() } as IBaseMeta),
-    })
+  async write<T>(key: string, value: T, meta: BucketEntryMeta): Promise<void> {
+    this.#store.set(key, { value, meta })
   }
 
-  async meta(key: string): Promise<IBaseMeta | undefined> {
+  async meta(key: string): Promise<BucketEntryMeta | undefined> {
     return this.#store.get(key)?.meta
   }
+
+  async resolve(_key: string): Promise<void> {}
 
   async delete(key: string): Promise<void> {
     this.#store.delete(key)

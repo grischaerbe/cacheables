@@ -28,7 +28,7 @@ describe('Cache operations', () => {
     })
     const value = 10
     const cachedValue = await cache.remember(() => mockedApiRequest(value), 'a')
-    expect(await cache.isCached('a')).toEqual(true)
+    expect(await cache.meta('a')).toBeDefined()
     expect(cachedValue).toEqual(value)
   })
 
@@ -50,8 +50,8 @@ describe('Cache operations', () => {
       'b',
     )
 
-    expect(await cache.isCached('a')).toEqual(true)
-    expect(await cache.isCached('b')).toEqual(true)
+    expect(await cache.meta('a')).toBeDefined()
+    expect(await cache.meta('b')).toBeDefined()
     expect([cachedValueA, cachedValueB]).toEqual([valueA, valueB])
   })
 
@@ -64,9 +64,9 @@ describe('Cache operations', () => {
     const value = 10
     await cache.remember(() => mockedApiRequest(value), 'a')
 
-    expect(await cache.isCached('a')).toEqual(true)
+    expect(await cache.meta('a')).toBeDefined()
     await cache.delete('a')
-    expect(await cache.isCached('a')).toEqual(false)
+    expect(await cache.meta('a')).toBeUndefined()
   })
 
   it('Clears the cache', async () => {
@@ -78,9 +78,9 @@ describe('Cache operations', () => {
     const value = 10
     await cache.remember(() => mockedApiRequest(value), 'a')
 
-    expect(await cache.isCached('a')).toEqual(true)
+    expect(await cache.meta('a')).toBeDefined()
     await cache.clear()
-    expect(await cache.isCached('a')).toEqual(false)
+    expect(await cache.meta('a')).toBeUndefined()
   })
 
   it('Creates proper keys', () => {

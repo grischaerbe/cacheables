@@ -244,19 +244,6 @@ describe('cascade behavior', () => {
     expect(l2.clearCalls).toBe(1)
   })
 
-  it('isCached returns true if any layer has the key', async () => {
-    const l1 = new FakeBucket()
-    const l2 = new FakeBucket({
-      key: 'test:k',
-      value: 'v',
-      meta: { storedAt: Date.now() },
-    })
-    const cache = new Cacheable({ buckets: [l1, l2], namespace: 'test' })
-
-    expect(await cache.isCached('k')).toBe(true)
-    expect(await cache.isCached('missing')).toBe(false)
-  })
-
   it('meta returns highest-priority layer meta', async () => {
     const l1 = new FakeBucket()
     const l2 = new FakeBucket({

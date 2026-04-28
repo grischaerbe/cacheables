@@ -30,7 +30,6 @@ cache.remember(() => fetch('https://some-url.com/api'), 'key')
   - [cache.remember(resource, key)](#cacherememberresource-key-promiset)
   - [cache.delete(key)](#cachedeletekey-promisevoid)
   - [cache.clear()](#cacheclear-promisevoid)
-  - [cache.isCached(key)](#cacheiscachedkey-promiseboolean)
   - [cache.meta(key)](#cachemetakey-promisetmeta--undefined)
   - [Cacheable.key(...args)](#cacheablekeyargs-string)
 - [Buckets](#buckets)
@@ -107,10 +106,6 @@ Deletes the entry from every bucket.
 ### `cache.clear(): Promise<void>`
 
 Clears every bucket and the in-flight registry.
-
-### `cache.isCached(key): Promise<boolean>`
-
-`true` if any layer reports the key (existence-only — does not consider freshness).
 
 ### `cache.meta(key): Promise<TMeta | undefined>`
 
@@ -292,7 +287,7 @@ const tenantA = new Cacheable({ buckets: [bucket], namespace: 'tenant-a' })
 const tenantB = new Cacheable({ buckets: [bucket], namespace: 'tenant-b' })
 ```
 
-Two instances can share a bucket without colliding. `delete` and `isCached` respect the namespace; `clear()` wipes the entire underlying bucket (it has no notion of which keys belong to which namespace), so reach for it only when you really mean _everything_.
+Two instances can share a bucket without colliding. `delete` and `meta` respect the namespace; `clear()` wipes the entire underlying bucket (it has no notion of which keys belong to which namespace), so reach for it only when you really mean _everything_.
 
 ## Cache Policies
 
@@ -355,7 +350,8 @@ Breaking changes:
 - **`namespace` is required.** Every bucket call sees keys prefixed with `${namespace}:`. Pick one even if only one instance writes to the bucket.
 - **`enabled` option removed.** If you need to bypass the cache, call `resource()` directly instead of `cache.remember(...)`.
 - **`keys()` removed.** Enumerating heterogeneous async layers (some non-enumerable, like CDNs) has no single sensible semantic.
-- **`delete`, `clear`, `isCached` are async.** They now return `Promise<void>` / `Promise<boolean>` — add `await`.
+- **`delete` and `clear` are async.** They now return `Promise<void>` — add `await`.
+- **`isCached` removed.** Use `cache.meta(key)` instead — it returns `undefined` when the key is absent and the meta object otherwise.
 - **`log` / `logTiming` replaced by `logger`.** Pass `new ConsoleLogger()` to restore the previous default-on logging, or implement `ILogger` to route messages elsewhere. Timing now ships as a formatted string (`Cacheable "<key>": <Xms>`) instead of `console.time` / `timeEnd`.
 - **Options types reshaped.** v2's `CacheOptions` (constructor) and `CacheableOptions` (per-call) are gone. v3's constructor options type is `CacheableOptions` — same name as v2's per-call type, completely different shape (it now carries `buckets`, `namespace`, `policy`, and `logger`).
 - **Buckets can throw.** Any throw from any bucket rejects `remember()`. v2's in-memory store couldn't fail, so this is a new error surface to be aware of once you wire up a custom bucket.

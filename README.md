@@ -17,19 +17,13 @@ A small, typed cache with composable storage buckets and a handful of cache poli
 ```ts
 import { Cacheable, MemoryBucket } from 'cacheables'
 
-// 'app' is the namespace — every key is stored under `app:<key>`.
-// `buckets` is the layered storage stack; the first entry is L1.
 const cache = new Cacheable('app', { buckets: [new MemoryBucket()] })
 
-// First call: misses, calls the resource, writes to every bucket.
-// Subsequent calls: hit, return the cached value without re-fetching.
-const data = await cache.remember(
-  () => fetch('https://some-url.com/api'),
-  'key',
-)
+cache.remember(() => fetch('https://some-url.com/api'), 'key')
 ```
 
 - [Installation](#installation)
+- [Usage](#usage)
 - [API](#api)
   - [new Cacheable(namespace, options)](#new-cacheablenamespace-options-cacheabletmeta)
   - [cache.remember(resource, key)](#cacherememberresource-key-promiset)
@@ -52,6 +46,31 @@ const data = await cache.remember(
 
 ```bash
 npm install cacheables
+```
+
+## Usage
+
+```ts
+import { Cacheable, MemoryBucket } from 'cacheables'
+
+const apiUrl = 'https://goweather.herokuapp.com/weather/Karlsruhe'
+
+// 'weather' is the namespace — every key is stored under `weather:<key>`.
+// `buckets` is the layered storage stack; the first entry is L1.
+// `policy: 'max-age'` returns the cached value while it is younger than
+// `maxAge` (in ms), and re-fetches when it has aged past that.
+const cache = new Cacheable('weather', {
+  buckets: [new MemoryBucket()],
+  policy: 'max-age',
+  maxAge: 5_000,
+})
+
+// `remember` is both getter and setter: on a miss it calls the resource
+// and writes to every bucket; on a hit it returns the cached value.
+const getWeather = () => cache.remember(() => fetch(apiUrl), 'weather')
+
+await getWeather() // miss — fetched
+await getWeather() // hit — cached
 ```
 
 ## API

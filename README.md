@@ -39,6 +39,10 @@ cache.remember(() => fetch('https://some-url.com/api'), 'key')
   * [Writing your own bucket](#writing-your-own-bucket)
   * [Cascade behavior](#cascade-behavior)
   * [Typed metadata (`TMeta`)](#typed-metadata-tmeta)
+* [Logger](#logger)
+  * [`ILogger` contract](#ilogger-contract)
+  * [Built-in `ConsoleLogger`](#built-in-consolelogger)
+  * [Writing your own logger](#writing-your-own-logger)
 * [Namespacing](#namespacing)
 * [Cache Policies](#cache-policies)
 * [Migrating from v2 → v3](#migrating-from-v2--v3)
@@ -81,8 +85,7 @@ type CacheableOptions<TMeta extends IBaseMeta = IBaseMeta> = {
   buckets: IBucket<TMeta>[]            // REQUIRED, L1 first
   namespace: string                    // REQUIRED — bucket keys become `${namespace}:${key}`
   enabled?: boolean                    // default: true
-  log?: boolean                        // default: false
-  logTiming?: boolean                  // default: false
+  logger?: ILogger                     // default: undefined (no logging)
 } & (
   | { policy?: 'cache-only' }                                // default
   | { policy: 'network-only' }
@@ -217,6 +220,59 @@ const meta = await cache.meta('user:42') // typed as ETagMeta | undefined
 
 Every bucket passed to the constructor must satisfy `IBucket<ETagMeta>`, and the TypeScript compiler enforces it. The built-in `MemoryBucket` only implements `IBucket<IBaseMeta>`, so it can't be used in a `Cacheable` instance with a custom `TMeta` — write a custom bucket (or wrap `MemoryBucket`) when you need extended metadata.
 
+## Logger
+
+Pass a `logger` to surface what the engine is doing. Without one, the engine is silent.
+
+### `ILogger` contract
+
+```ts
+interface ILogger {
+  log(message: string): void
+}
+```
+
+When a `logger` is configured, every `cache.remember(...)` call emits two messages — timing, then hit count — and `enabled: false` short-circuits emit a single `'CACHE: Caching disabled'` message:
+
+```
+Cacheable "weather": 12ms
+Cacheable "weather": hits: 1
+```
+
+### Built-in `ConsoleLogger`
+
+Forwards each message to `console.log`. Useful as a default during development.
+
+```ts
+import { Cacheable, ConsoleLogger, MemoryBucket } from 'cacheables'
+
+const cache = new Cacheable({
+  buckets: [new MemoryBucket()],
+  namespace: 'app',
+  logger: new ConsoleLogger(),
+})
+```
+
+### Writing your own logger
+
+Any object with a `log(message: string)` method satisfies `ILogger`, so wrapping an existing logger is a one-liner:
+
+```ts
+import pino from 'pino'
+import { Cacheable, MemoryBucket, type ILogger } from 'cacheables'
+
+const pinoLogger = pino()
+const logger: ILogger = { log: (m) => pinoLogger.info(m) }
+
+const cache = new Cacheable({
+  buckets: [new MemoryBucket()],
+  namespace: 'app',
+  logger,
+})
+```
+
+The `logger` field on a `Cacheable` instance is mutable — assign a new logger (or `undefined`) at runtime to flip logging on or off.
+
 ## Namespacing
 
 `namespace` is required: every bucket call sees keys prefixed with `${namespace}:`. This isolates instances that share the same bucket, so you must pick a namespace at construction time even when only one instance uses a bucket.
@@ -259,6 +315,7 @@ Breaking changes:
 - `Cacheable` is now generic in `TMeta`. Plain `new Cacheable({ buckets, namespace })` defaults to `Cacheable<IBaseMeta>` and is source-compatible at the type level.
 - New constructor options: `buckets` (required) and `namespace` (required).
 - Any throw from any bucket rejects `remember()`. Previously the in-memory store couldn't fail; this is new strict-error surface for users with custom buckets.
+- The `log` and `logTiming` boolean options have been replaced by a single `logger?: ILogger` option. Pass `new ConsoleLogger()` to restore the previous default-on logging, or implement `ILogger` to route messages elsewhere. Timing now ships as a formatted string (`Cacheable "<key>": <Xms>`) instead of `console.time`/`timeEnd`.
 
 ## License
 

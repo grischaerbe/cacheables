@@ -1,4 +1,4 @@
-import { Cacheable, MemoryBucket } from '../src'
+import { Cacheable, ConsoleLogger, MemoryBucket } from '../src'
 
 const errorMessage = 'This is an error message.'
 
@@ -98,7 +98,7 @@ describe('Cache operations', () => {
     const cache = new Cacheable({
       buckets: [new MemoryBucket()],
       namespace: 'test',
-      log: true,
+      logger: new ConsoleLogger(),
       enabled: false,
     })
 
@@ -165,7 +165,7 @@ describe('Cache operations', () => {
     const cache = new Cacheable({
       buckets: [new MemoryBucket()],
       namespace: 'test',
-      log: true,
+      logger: new ConsoleLogger(),
       policy: 'max-age',
       maxAge: 100,
     })

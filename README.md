@@ -27,6 +27,7 @@ cache.remember(() => fetch('https://some-url.com/api'), 'key')
 - [API](#api)
   - [new Cacheable(namespace, options)](#new-cacheablenamespace-options-cacheabletmeta)
   - [cache.remember(resource, key)](#cacherememberresource-key-promiset)
+  - [cache.resolve(resource, key)](#cacheresolveresource-key-promisetmeta)
   - [cache.delete(key) / cache.clear()](#cachedeletekey-promisevoid--cacheclear-promisevoid)
   - [cache.meta(key)](#cachemetakey-promisetmeta--undefined)
   - [Cacheable.key(...args)](#cacheablekeyargs-string)
@@ -101,13 +102,34 @@ type CacheableOptions<TMeta extends IBaseMeta = IBaseMeta> = {
 
 Resolves to the cached value if present (subject to policy); otherwise calls `resource()` and writes to every bucket.
 
+### `cache.resolve(resource, key): Promise<TMeta>`
+
+Same fresh-or-fetch behavior as `remember`, but returns the bucket's meta instead of the producer's value. Useful when the projection a bucket exposes through `TMeta` is what callers actually need — for example, a filesystem bucket that fetches and stores a remote image as bytes, then exposes a local URL on its meta:
+
+```ts
+interface FilesystemMeta extends IBaseMeta {
+  url: string
+}
+
+const cache = new Cacheable<FilesystemMeta>('images', {
+  buckets: [new FilesystemBucket()],
+})
+
+const { url } = await cache.resolve(
+  () => fetch(imageUrl).then((r) => r.arrayBuffer()),
+  imageUrl,
+)
+```
+
+`resolve` and `remember` share the same in-flight registry: a concurrent pair against the same key triggers `resource()` once and both observers see the same `storedAt`. Unlike `cache.meta(key)`, `resolve` honors the cache policy — a stale entry will trigger a producer call (or a background revalidation under `stale-while-revalidate`).
+
 ### `cache.delete(key): Promise<void>` / `cache.clear(): Promise<void>`
 
 `delete` removes the entry from every bucket. `clear` wipes every bucket and the in-flight registry. Both are async — `await` them.
 
 ### `cache.meta(key): Promise<TMeta | undefined>`
 
-Returns the meta from the highest-priority layer that has the key, or `undefined` if no layer has it. Useful to inspect sidecar fields (`etag`, `ttl`, …) and to test for presence.
+Returns the meta from the highest-priority layer that has the key, or `undefined` if no layer has it. **Bypasses the policy** — it returns whatever the cache holds, fresh or stale. Reach for `cache.resolve(...)` instead when you want a meta that has been refreshed against the policy; reach for `cache.meta(key)` for raw inspection (debugging, eviction logic, presence checks).
 
 ### `Cacheable.key(...args): string`
 
@@ -220,10 +242,10 @@ Every bucket passed to the constructor must satisfy `IBucket<ETagMeta>`, enforce
 
 ## Cache Policies
 
-The policy is set once on the constructor and applies to every `remember()` call on that instance. Two mechanics matter across policies:
+The policy is set once on the constructor and applies to every `remember()` and `resolve()` call on that instance. Two mechanics matter across policies:
 
 - **Freshness**: whether a cached value qualifies for return without re-fetching. Only `max-age` and `stale-while-revalidate` look at `storedAt`.
-- **In-flight deduplication**: when two callers ask for the same key concurrently, an instance keeps a per-key promise so only one `resource()` runs and both callers receive its result. Dedup is policy-dependent (see each section below).
+- **In-flight deduplication**: when two callers ask for the same key concurrently, an instance keeps a per-key promise so only one `resource()` runs and both callers receive its result. `remember` and `resolve` share that registry — a concurrent pair against the same key triggers one `resource()` call. Dedup is policy-dependent (see each section below).
 
 | Policy                                                        | Returns cached value                 | Calls `resource()`                               | In-flight dedup |
 | ------------------------------------------------------------- | ------------------------------------ | ------------------------------------------------ | --------------- |
@@ -361,7 +383,7 @@ interface ILogger {
 }
 ```
 
-Every `cache.remember(...)` emits one message, tagged `HIT` or `MISS` with the elapsed time:
+Every `cache.remember(...)` and `cache.resolve(...)` emits one message, tagged `HIT` or `MISS` with the elapsed time:
 
 ```
 Cacheable "weather": MISS 12ms

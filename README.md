@@ -4,24 +4,22 @@
 ![Language](https://img.shields.io/github/languages/top/grischaerbe/cacheables)
 ![Build](https://img.shields.io/github/workflow/status/grischaerbe/cacheables/Node.js%20Package)
 
-A simple in-memory cache with support of different cache policies and elegant syntax written in Typescript.
+A small, typed cache with composable storage adapters and a handful of cache policies, written in TypeScript.
 
-- Elegant syntax: **Wrap existing API calls** to save some of those precious API calls.
-- **Fully typed results**. No type casting required.
+- Elegant syntax: **wrap existing async calls** with `cache.remember(...)`.
+- **Multilayer storage**: compose a fast in-memory L1 with any L2 you write (filesystem, Redis, S3, …). Reads cascade L1 → Ln; on any hit the engine fills missing layers.
+- **Fully typed results**, including a generic `TMeta` parameter for sidecar metadata.
 - Supports different **cache policies**.
-- Written in **Typescript**.
-- **Integrated Logs**: Check on the timing of your API calls.
-- Helper function to build cache keys.
+- Helper to build cache keys.
+- Optional **namespace** prefix so multiple instances can share an adapter without collisions.
 - Works in the browser and Node.js.
 - **No dependencies**.
-- Extensively tested.
-- **Small**: 1.43 kB minified and gzipped.
 
 ```ts
-// without caching
-fetch('https://some-url.com/api')
+import { Cacheables, MemoryAdapter } from 'cacheables'
 
-// with caching
+const cache = new Cacheables({ adapters: [new MemoryAdapter()] })
+
 cache.remember(() => fetch('https://some-url.com/api'), 'key')
 ```
 
@@ -29,20 +27,22 @@ cache.remember(() => fetch('https://some-url.com/api'), 'key')
 * [Quickstart](#quickstart)
 * [Usage](#usage)
 * [API](#api)
-  * [new Cacheables(options?): Cacheables](#new-cacheablesoptions-cacheables)
-  * [cache.remember(resource, key): Promise&lt;T&gt;](#cacherememberresource-key-promiset)
-  * [cache.delete(key: string): void](#cachedeletekey-string-void)
-  * [cache.clear(): void](#cacheclear-void)
-  * [cache.keys(): string[]](#cachekeys-string)
-  * [cache.isCached(key: string): boolean](#cacheiscachedkey-string-boolean)
-  * [Cacheables.key(...args: (string | number)[]): string](#cacheableskeyargs-string--number-string)
+  * [new Cacheables(options)](#new-cacheablesoptions-cacheablestmeta)
+  * [cache.remember(resource, key)](#cacherememberresource-key-promiset)
+  * [cache.delete(key)](#cachedeletekey-promisevoid)
+  * [cache.clear()](#cacheclear-promisevoid)
+  * [cache.isCached(key)](#cacheiscachedkey-promiseboolean)
+  * [cache.meta(key)](#cachemetakey-promisetmeta--undefined)
+  * [Cacheables.key(...args)](#cacheableskeyargs-string)
+* [Storage adapters](#storage-adapters)
+  * [`IStorageAdapter` contract](#istorageadapter-contract)
+  * [Built-in `MemoryAdapter`](#built-in-memoryadapter)
+  * [Writing your own adapter](#writing-your-own-adapter)
+  * [Cascade behavior](#cascade-behavior)
+  * [Typed metadata (`TMeta`)](#typed-metadata-tmeta)
+* [Namespacing](#namespacing)
 * [Cache Policies](#cache-policies)
-  * [Cache Only](#cache-only)
-  * [Network Only](#network-only)
-  * [Network Only – Non Concurrent](#network-only--non-concurrent)
-  * [Max Age](#max-age)
-  * [Stale While Revalidate](#stale-while-revalidate)
-* [In Progress](#in-progress)
+* [Migrating from v3 → v4](#migrating-from-v3--v4)
 * [License](#license)
 
 ## Installation
@@ -51,259 +51,206 @@ cache.remember(() => fetch('https://some-url.com/api'), 'key')
 npm install cacheables
 ```
 
-## Quickstart
-
-[https://codesandbox.io/s/quickstart-cacheables-5zh6h?file=/src/index.ts](https://codesandbox.io/s/quickstart-cacheables-5zh6h?file=/src/index.ts)
-
 ## Usage
 
 ```ts
-// Import Cacheables
-import { Cacheables } from "cacheables"
+import { Cacheables, MemoryAdapter } from 'cacheables'
 
-const apiUrl = "https://goweather.herokuapp.com/weather/Karlsruhe"
+const apiUrl = 'https://goweather.herokuapp.com/weather/Karlsruhe'
 
-// Create a new cache instance
 const cache = new Cacheables({
-  logTiming: true,
-  log: true,
+  adapters: [new MemoryAdapter()],
   policy: 'max-age',
-  maxAge: 5000,
+  maxAge: 5_000,
 })
 
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+const getWeather = () => cache.remember(() => fetch(apiUrl), 'weather')
 
-// Wrap the existing API call `fetch(apiUrl)` and assign a cache
-// key `weather` to it. This example uses the cache policy 'max-age'
-// which invalidates the cache after a certain time.
-// The method returns a fully typed Promise just like `fetch(apiUrl)`
-// would but with the benefit of caching the result.
-const getWeatherData = () =>
-  cache.remember(() => fetch(apiUrl), 'weather')
-
-const start = async () => {
-  // Fetch some fresh weather data and store it in our cache.
-  const weatherData = await getWeatherData()
-
-  /** 3 seconds later **/
-  await wait(3000)
-
-  // The cached weather data is returned as the
-  // maxAge of 5 seconds did not yet expire.
-  const cachedWeatherData = await getWeatherData()
-
-  /** Another 3 seconds later **/
-  await wait(3000)
-
-  // Now that the maxAge is expired, the resource
-  // will be fetched and stored in our cache.
-  const freshWeatherData = await getWeatherData()
-}
-
-start()
+await getWeather() // miss — fetched
+await getWeather() // hit — cached
 ```
 
-`remember` serves both as the getter and setter. This method will return a cached resource if available or use the provided argument `resource` to fill the cache and return a value.
-
-> Be aware that there is no exclusive cache getter (like `cache.get('key)`). This is by design as the Promise provided by the first argument to `remember` is used to infer the return type of the cached resource.
+`remember` is both getter and setter. The first time a key is requested it calls the resource and stores the result in every configured adapter; subsequent reads cascade through the adapters until one returns a hit.
 
 ## API
 
-### `new Cacheables(options?): Cacheables`
-
-- Creates a new `Cacheables` instance.
-
-#### Arguments
-
-##### - `options?: CacheOptions`
+### `new Cacheables(options): Cacheables<TMeta>`
 
 ```ts
-type CacheOptions = {
-  enabled?: boolean    // Enable/disable the cache, can be set anytime, default: true.
-  log?: boolean        // Log hits to the cache, default: false.
-  logTiming?: boolean  // Log the timing, default: false.
+type CacheablesOptions<TMeta extends IBaseMeta = IBaseMeta> = {
+  adapters: IStorageAdapter<TMeta>[]   // REQUIRED, L1 first
+  namespace?: string                   // adapter keys become `${namespace}:${key}`
+  enabled?: boolean                    // default: true
+  log?: boolean                        // default: false
+  logTiming?: boolean                  // default: false
 } & (
   | { policy?: 'cache-only' }                                // default
   | { policy: 'network-only' }
   | { policy: 'network-only-non-concurrent' }
-  | { policy: 'max-age', maxAge: number }                    // maxAge required
-  | { policy: 'stale-while-revalidate', maxAge?: number }    // maxAge optional
+  | { policy: 'max-age', maxAge: number }
+  | { policy: 'stale-while-revalidate', maxAge?: number }
 )
 ```
 
-The cache policy (and `maxAge` where applicable) is set on the instance and applies to every entry in that cache. To use multiple policies, create multiple `Cacheables` instances.
-
-#### Example:
-
-```ts
-import { Cacheables } from 'cacheables'
-
-const cache = new Cacheables({
-  logTiming: true,
-  policy: 'max-age',
-  maxAge: 5000,
-})
-```
+`adapters` must be a non-empty array; the constructor throws `Error('At least one storage adapter is required')` otherwise. The first adapter is L1 (fastest, queried first); the rest form deeper layers.
 
 ### `cache.remember(resource, key): Promise<T>`
 
-- If a resource exists in the cache (determined by the presence of a value with key `key`) `remember` decides on returning a cache based on the instance's cache policy.
-- If there's no resource in the cache, the provided `resource` will be called and used to store a cache value with key `key` and the value is returned.
+Resolves to the cached value if present (subject to policy), otherwise calls `resource()` and stores the result in every adapter.
 
-#### Arguments
+### `cache.delete(key): Promise<void>`
 
-##### - `resource: () => Promise<T>`
+Deletes the entry from every adapter.
 
-A function that returns a `Promise<T>`.
+### `cache.clear(): Promise<void>`
 
-##### - `key: string`
+Clears every adapter and the in-flight registry.
 
-A key to store the cache at.  
-See [Cacheables.key()](#cacheableskeyargs-string--number-string) for a safe and easy way to generate unique keys.
+### `cache.isCached(key): Promise<boolean>`
 
-#### Example
+`true` if any layer reports the key (existence-only — does not consider freshness).
 
-```ts
-const cache = new Cacheables({ policy: 'max-age', maxAge: 10000 })
+### `cache.meta(key): Promise<TMeta | undefined>`
 
-const cachedApiResponse = await cache.remember(
-  () => fetch('https://github.com/'),
-  'key',
-)
-```
+Returns the meta from the highest-priority layer that has the key — useful for inspecting sidecar fields like `etag`, `ttl`, etc.
 
-### `cache.delete(key: string): void`
+### `Cacheables.key(...args): string`
 
-#### Arguments
-
-##### - `key: string`
-
-Delete a cache for a certain key.
-
-#### Example
+Joins the parts with `:`. Identical to v3.
 
 ```ts
-cache.delete('key')
+Cacheables.key('user', 42) // 'user:42'
 ```
 
-### `cache.clear(): void`
+## Storage adapters
 
-Delete all cached resources.
-
-### `cache.keys(): string[]`
-
-Returns all the cache keys
-
-### `cache.isCached(key: string): boolean`
-
-#### Arguments
-
-##### - `key: string`
-
-Returns whether a cacheable is present for a certain key.
-
-#### Example
+### `IStorageAdapter` contract
 
 ```ts
-const aIsCached = cache.isCached('a')
+interface IBaseMeta {
+  storedAt: number
+}
+
+interface IStorageAdapter<TMeta extends IBaseMeta = IBaseMeta> {
+  read<T>(key: string): Promise<{ value: T } | undefined>
+  write<T>(key: string, value: T, meta?: TMeta): Promise<void>
+  meta(key: string): Promise<TMeta | undefined>
+  delete(key: string): Promise<void>
+  clear(): Promise<void>
+}
 ```
 
-### `Cacheables.key(...args: (string | number)[]): string`
+Rules:
 
-A static helper function to easily build safe and consistent cache keys.
+- `meta` MUST be cheap. The engine probes it on every layer for every read.
+- `read` returns `undefined` when the entry is absent and `{ value }` when it's present — the wrapper exists so adapters can store entries whose value is itself `undefined` without colliding with the absence signal.
+- When `write` receives a `meta`, the adapter MUST persist `meta.storedAt` verbatim (other fields MAY be transformed). This guarantees `max-age` semantics stay coherent across layers.
+- When `write` is called with no `meta`, the adapter MUST synthesize one with `storedAt: Date.now()`.
+- `clear` MUST remove every entry the adapter manages.
+- Any throw from any adapter rejects the surrounding `remember()` call. There is no per-adapter error suppression.
 
-#### Example
+### Built-in `MemoryAdapter`
+
+Ships with the package; covers the common in-memory use case.
 
 ```ts
-const id = '5d3c5be6-2da4-11ec-8d3d-0242ac130003'
-console.log(Cacheables.key('user', id))
-// 'user:5d3c5be6-2da4-11ec-8d3d-0242ac130003'
+import { Cacheables, MemoryAdapter } from 'cacheables'
+
+const cache = new Cacheables({ adapters: [new MemoryAdapter()] })
 ```
+
+### Writing your own adapter
+
+Implement `IStorageAdapter`. The contract is small enough that filesystem, Redis, IndexedDB, or S3 layers are easy to add without ceremony. A typical L2 keeps a sidecar (file, table, key/value entry) so `meta()` is cheap.
+
+```ts
+import type { IStorageAdapter, IBaseMeta } from 'cacheables'
+
+class FileSystemAdapter implements IStorageAdapter {
+  async read<T>(key: string): Promise<{ value: T } | undefined> { /* … */ }
+  async write<T>(key: string, value: T, meta?: IBaseMeta): Promise<void> { /* … */ }
+  async meta(key: string): Promise<IBaseMeta | undefined> { /* … */ }
+  async delete(key: string): Promise<void> { /* … */ }
+  async clear(): Promise<void> { /* … */ }
+}
+```
+
+### Cascade behavior
+
+```ts
+const cache = new Cacheables({
+  adapters: [new MemoryAdapter(), new FileSystemAdapter()],
+  policy: 'max-age',
+  maxAge: 60_000,
+})
+```
+
+- **Read**: probe `meta()` on every layer in parallel; the first layer that satisfies the freshness predicate is the hit. Read its value, and back-fill every other layer that is still missing the key — using the hit layer's meta so `storedAt` is preserved everywhere.
+- **Miss + resource()**: write to L1 with no meta (L1 synthesizes its own), read meta back from L1, then write to L2..Ln with that exact meta. All layers converge to the same `storedAt`.
+- **Stale L1 + fresh L2 (under `max-age`)**: the freshness predicate filters per-layer, so the engine returns the fresh L2 value and back-fills L1.
+
+### Typed metadata (`TMeta`)
+
+`Cacheables` is generic in `TMeta`. Extend it to carry sidecar fields:
+
+```ts
+import { Cacheables, type IBaseMeta, type IStorageAdapter } from 'cacheables'
+
+interface ETagMeta extends IBaseMeta {
+  etag: string
+}
+
+class ETagAdapter implements IStorageAdapter<ETagMeta> {
+  // read / write / meta / delete / clear …
+}
+
+const cache = new Cacheables<ETagMeta>({
+  adapters: [new ETagAdapter()],
+})
+
+const meta = await cache.meta('user:42') // typed as ETagMeta | undefined
+```
+
+Every adapter passed to the constructor must satisfy `IStorageAdapter<ETagMeta>`, and the TypeScript compiler enforces it. The built-in `MemoryAdapter` only implements `IStorageAdapter<IBaseMeta>`, so it can't be used in a `Cacheables` instance with a custom `TMeta` — write a custom adapter (or wrap `MemoryAdapter`) when you need extended metadata.
+
+## Namespacing
+
+Set `namespace` and every adapter call sees keys prefixed with `${namespace}:`:
+
+```ts
+const adapter = new MemoryAdapter()
+const tenantA = new Cacheables({ adapters: [adapter], namespace: 'tenant-a' })
+const tenantB = new Cacheables({ adapters: [adapter], namespace: 'tenant-b' })
+```
+
+Two instances can share an adapter without colliding. `delete` and `isCached` respect the namespace; `clear()` wipes the entire underlying adapter (it has no notion of which keys belong to which namespace), so reach for it only when you really mean *everything*.
 
 ## Cache Policies
 
-*Cacheables* comes with multiple cache policies.  
-Each policy has different behaviour when it comes to preheating the cache (i.e. the first time it is requested) and balancing network requests.
+| Policy                          | Behaviour                                                                                                                                                                                                                                                                                              |
+|---------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `cache-only` *(default)*        | Return any cached value; on miss, call `resource()`. Concurrent miss callers share one fetch.                                                                                                                                                                                                          |
+| `network-only`                  | Always call `resource()`; concurrent calls each get their own.                                                                                                                                                                                                                                         |
+| `network-only-non-concurrent`   | Always call `resource()`, but concurrent calls share one in-flight request.                                                                                                                                                                                                                            |
+| `max-age` *(maxAge required)*   | Return cache if `Date.now() - storedAt <= maxAge`, otherwise fetch.                                                                                                                                                                                                                                    |
+| `stale-while-revalidate`        | Return the cached value immediately; if `maxAge` is unset or exceeded, fire a background revalidation.                                                                                                                                                                                                 |
 
-| Cache Policy                  | Behaviour                                                                                                                                                                                                                                                               |
-|-------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `cache-only` (default)        | All requests should return a value from the cache.                                                                                                                                                                                                                      |
-| `network-only`                | All requests should be handled by the network.<br>Simultaneous requests trigger simultaneous network requests.                                                                                                                                                          |
-| `network-only-non-concurrent` | All requests should be handled by the network but no concurrent network requests are allowed.<br>All requests made in the timeframe of a network request are resolved once that is finished.                                                                            |
-| `max-age`                     | All requests should be checked against max-age.<br>If max-age is expired, a network request is triggered.<br>All requests made in the timeframe of a network request are resolved once that is finished.                                                                |
-| `stale-while-revalidate`      | All requests immediately return a cached value.<br>If no network request is running and maxAge is provided and reached or maxAge is not provided, a network request is triggered, 'silently' updating the cache in the background.<br>After the network request finished, subsequent requests will receive the updated cached value. |
-
-### Cache Only (default)
-
-The default and simplest cache policy. If there is a cache, return it.  
-If there is no cache yet, all calls will be resolved by the first network request (i.e. non-concurrent).
-
-##### Example
 ```ts
-const cache = new Cacheables({ policy: 'cache-only' })
-cache.remember(() => fetch(url), 'a')
+new Cacheables({ adapters: [new MemoryAdapter()], policy: 'max-age', maxAge: 1_000 })
 ```
 
-### Network Only
+## Migrating from v3 → v4
 
-The opposite of `cache-only`.  
-Simultaneous requests trigger simultaneous network requests.
+Breaking changes:
 
-##### Example
-```ts
-const cache = new Cacheables({ policy: 'network-only' })
-cache.remember(() => fetch(url), 'a')
-```
-
-### Network Only – Non Concurrent
-
-A version of `network-only` but only one network request is running at any point in time.  
-All requests should be handled by the network but no concurrent network requests are allowed. All requests made in the timeframe of a network request are resolved once that is finished.
-
-##### Example
-```ts
-const cache = new Cacheables({ policy: 'network-only-non-concurrent' })
-cache.remember(() => fetch(url), 'a')
-```
-
-### Max Age
-
-The cache policy `max-age` defines after what time a cached value is treated as invalid.  
-All requests should be checked against max-age. If max-age is expired, a network request is triggered. All requests made in the timeframe of a network request are resolved once that is finished.
-
-##### Example
-```ts
-// Trigger a network request if the cached value is older than 1 second.
-const cache = new Cacheables({ policy: 'max-age', maxAge: 1000 })
-cache.remember(() => fetch(url), 'a')
-```
-
-### Stale While Revalidate
-
-The cache policy `stale-while-revalidate` will return a cached value immediately and – if there is no network request already running and `maxAge` is either provided and reached or not provided – trigger a network request to 'silently' update the cache in the background.
-
-##### Example without `maxAge`
-```ts
-// If there is a cache, return it but 'silently' update the cache.
-const cache = new Cacheables({ policy: 'stale-while-revalidate' })
-cache.remember(() => fetch(url), 'a')
-```
-
-##### Example with `maxAge`
-```ts
-// If there is a cache, return it and 'silently' update the cache if it's older than 1 second.
-const cache = new Cacheables({ policy: 'stale-while-revalidate', maxAge: 1000 })
-cache.remember(() => fetch(url), 'a')
-```
-
-## In Progress
-
-PRs welcome
-
-- [ ] ~~Cache invalidation callback~~
-- [ ] Adapters to store cache not only in memory
-- [X] Cache policies
-- [X] Tests
+- `adapters` is now a **required** constructor option. `new Cacheables()` no longer compiles. Pass at least one adapter, e.g. `new Cacheables({ adapters: [new MemoryAdapter()] })`.
+- `delete(key)` returns `Promise<void>` (was `void`). Add `await`.
+- `clear()` returns `Promise<void>` (was `void`). Add `await`.
+- `isCached(key)` returns `Promise<boolean>` (was `boolean`). Add `await`.
+- `keys()` is **removed**. Enumerating heterogeneous async layers (some non-enumerable, like CDNs) doesn't have a single sensible semantic.
+- `Cacheables` is now generic in `TMeta`. Plain `new Cacheables({ adapters })` defaults to `Cacheables<IBaseMeta>` and is source-compatible at the type level.
+- New constructor options: `adapters` (required) and `namespace` (optional).
+- Any throw from any adapter rejects `remember()`. Previously the in-memory store couldn't fail; this is new strict-error surface for users with custom adapters.
 
 ## License
 

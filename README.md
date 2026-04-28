@@ -252,7 +252,7 @@ await u() // hit — returns cached value, no fetch
 await Promise.all([u(), u()])
 ```
 
-Use this when the underlying data is effectively immutable for the lifetime of the cache (e.g. content addressed by hash) or when you handle invalidation manually via `cache.delete(key)`.
+Use this policy when the data is effectively immutable for the lifetime of the cache (e.g. content addressed by hash), or when you invalidate keys yourself with `cache.delete(key)`.
 
 ### `network-only`
 
@@ -271,7 +271,7 @@ await Promise.all([
 ])
 ```
 
-Reach for this when staleness is unacceptable and the cost of duplicate concurrent fetches is acceptable (or impossible — e.g. side-effecting POSTs that mustn't be coalesced).
+Use this policy when stale data is unacceptable and concurrent calls must not be coalesced — for instance, side-effecting POSTs.
 
 ### `network-only-non-concurrent`
 
@@ -292,7 +292,7 @@ const [a, b, c] = await Promise.all([
 // Subsequent calls fetch again; this policy never returns the previously cached value.
 ```
 
-Right when you always want fresh data but want to suppress request thunder under burst load.
+Use this policy when you always want fresh data but want to suppress thundering-herd fetches under burst load.
 
 ### `max-age`
 
@@ -324,6 +324,8 @@ const cache = new Cacheable('app', {
 // the engine returns the L2 value and back-fills L1 with the same storedAt.
 ```
 
+Use this policy when data has a known freshness window and a re-fetch past that window is acceptable.
+
 ### `stale-while-revalidate`
 
 Returns the cached value immediately when it exists, **even if stale**. If `maxAge` is unset _or_ exceeded, fires a background `resource()` call to refresh — the current caller does not wait for it. With no cached value, it behaves like `network-only-non-concurrent` (caller waits, concurrent callers dedup).
@@ -345,7 +347,9 @@ await cache.remember(() => fetchUser(1), 'user:1')
 const stale = await cache.remember(() => fetchUser(1), 'user:1')
 ```
 
-Background revalidation errors are swallowed (the stale value has already been served). Concurrent stale reads share one revalidation. Choose this policy when latency matters more than absolute freshness — e.g. dashboards where a slightly outdated reading is preferable to a spinner.
+Background revalidation errors are swallowed (the stale value has already been served). Concurrent stale reads share one revalidation.
+
+Use this policy when latency matters more than absolute freshness — e.g. dashboards where a slightly outdated reading beats a loading spinner.
 
 ## Logger
 

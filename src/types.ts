@@ -37,10 +37,6 @@ export interface IBucket<TMeta extends IBaseMeta = IBaseMeta> {
 
 type CacheOptionsBase = {
   /**
-   * Enables caching.
-   */
-  enabled?: boolean
-  /**
    * Enable/disable logging of cache hits.
    */
   log?: boolean

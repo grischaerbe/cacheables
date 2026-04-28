@@ -76,22 +76,6 @@ describe('Cache operations', () => {
     expect(key).toEqual('aaa:bbb:ccc:ddd:10:20')
   })
 
-  it('Returns correctly if disabled', async () => {
-    const cache = new Cacheable({
-      buckets: [new MemoryBucket()],
-      namespace: 'test',
-      enabled: false,
-    })
-
-    const value = 10
-    const uncachedValue = await cache.remember(
-      () => mockedApiRequest(value),
-      'a',
-    )
-
-    expect(uncachedValue).toEqual(value)
-  })
-
   it('Logs correctly', async () => {
     console.log = jest.fn()
 
@@ -99,14 +83,9 @@ describe('Cache operations', () => {
       buckets: [new MemoryBucket()],
       namespace: 'test',
       log: true,
-      enabled: false,
     })
 
     const cachedRequest = () => cache.remember(() => mockedApiRequest(1), 'a')
-
-    await cachedRequest()
-    expect(console.log).lastCalledWith('CACHE: Caching disabled')
-    cache.enabled = true
 
     await cachedRequest()
     expect(console.log).lastCalledWith('Cacheable "a": hits: 0')

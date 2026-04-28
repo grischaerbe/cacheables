@@ -1,8 +1,8 @@
-import { Cacheables } from '../src'
+import { Cacheables, MemoryAdapter } from '../src'
 
 const errorMessage = 'This is an error message.'
 
-const mockedApiRequest = <T extends any>(
+const mockedApiRequest = <T>(
   value: T,
   duration = 0,
   reject = false,
@@ -22,19 +22,15 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 describe('Cache operations', () => {
   it('Returns correct values', async () => {
-    const cache = new Cacheables()
+    const cache = new Cacheables({ adapters: [new MemoryAdapter()] })
     const value = 10
-    const cachedValue = await cache.remember(
-      () => mockedApiRequest(value),
-      'a',
-    )
-    expect(cache.isCached('a')).toEqual(true)
-    expect(cache.keys()).toEqual(['a'])
+    const cachedValue = await cache.remember(() => mockedApiRequest(value), 'a')
+    expect(await cache.isCached('a')).toEqual(true)
     expect(cachedValue).toEqual(value)
   })
 
   it('Stores multiple caches', async () => {
-    const cache = new Cacheables()
+    const cache = new Cacheables({ adapters: [new MemoryAdapter()] })
 
     const valueA = 10
     const valueB = 20
@@ -48,30 +44,31 @@ describe('Cache operations', () => {
       'b',
     )
 
-    expect(cache.keys().sort()).toEqual(['a', 'b'].sort())
+    expect(await cache.isCached('a')).toEqual(true)
+    expect(await cache.isCached('b')).toEqual(true)
     expect([cachedValueA, cachedValueB]).toEqual([valueA, valueB])
   })
 
   it('Deletes values', async () => {
-    const cache = new Cacheables()
+    const cache = new Cacheables({ adapters: [new MemoryAdapter()] })
 
     const value = 10
     await cache.remember(() => mockedApiRequest(value), 'a')
 
-    expect(cache.isCached('a')).toEqual(true)
-    cache.delete('a')
-    expect(cache.isCached('a')).toEqual(false)
+    expect(await cache.isCached('a')).toEqual(true)
+    await cache.delete('a')
+    expect(await cache.isCached('a')).toEqual(false)
   })
 
   it('Clears the cache', async () => {
-    const cache = new Cacheables()
+    const cache = new Cacheables({ adapters: [new MemoryAdapter()] })
 
     const value = 10
     await cache.remember(() => mockedApiRequest(value), 'a')
 
-    expect(cache.isCached('a')).toEqual(true)
-    cache.clear()
-    expect(cache.isCached('a')).toEqual(false)
+    expect(await cache.isCached('a')).toEqual(true)
+    await cache.clear()
+    expect(await cache.isCached('a')).toEqual(false)
   })
 
   it('Creates proper keys', () => {
@@ -81,6 +78,7 @@ describe('Cache operations', () => {
 
   it('Returns correctly if disabled', async () => {
     const cache = new Cacheables({
+      adapters: [new MemoryAdapter()],
       enabled: false,
     })
 
@@ -97,6 +95,7 @@ describe('Cache operations', () => {
     console.log = jest.fn()
 
     const cache = new Cacheables({
+      adapters: [new MemoryAdapter()],
       log: true,
       enabled: false,
     })
@@ -112,6 +111,15 @@ describe('Cache operations', () => {
 
     await cachedRequest()
     expect(console.log).lastCalledWith('Cacheable "a": hits: 1')
+
+    await cachedRequest()
+    expect(console.log).lastCalledWith('Cacheable "a": hits: 2')
+  })
+
+  it('Throws when constructed without adapters', () => {
+    expect(() => new Cacheables({ adapters: [] })).toThrow(
+      'At least one storage adapter is required',
+    )
   })
 
   /**
@@ -123,6 +131,7 @@ describe('Cache operations', () => {
    */
   it('Handles race conditions correctly', async () => {
     const cache = new Cacheables({
+      adapters: [new MemoryAdapter()],
       policy: 'max-age',
       maxAge: 100,
     })
@@ -151,6 +160,7 @@ describe('Cache operations', () => {
     console.log = jest.fn()
 
     const cache = new Cacheables({
+      adapters: [new MemoryAdapter()],
       log: true,
       policy: 'max-age',
       maxAge: 100,
@@ -182,7 +192,7 @@ describe('Cache operations', () => {
   })
 
   it("Doesn't interfere with error handling", async () => {
-    const cache = new Cacheables()
+    const cache = new Cacheables({ adapters: [new MemoryAdapter()] })
     const rejecting = () => {
       return cache.remember(() => mockedApiRequest(0, 10, true), 'a')
     }
@@ -190,7 +200,7 @@ describe('Cache operations', () => {
   })
 
   it("Doesn't cache rejected value", async () => {
-    const cache = new Cacheables()
+    const cache = new Cacheables({ adapters: [new MemoryAdapter()] })
     let errNo = 1
     const rejecting = () => {
       return cache.remember(() => Promise.reject(errNo++), 'a')

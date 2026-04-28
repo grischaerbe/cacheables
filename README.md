@@ -225,6 +225,14 @@ The policy is set once on the constructor and applies to every `remember()` call
 - **Freshness**: whether a cached value qualifies for return without re-fetching. Only `max-age` and `stale-while-revalidate` look at `storedAt`.
 - **In-flight deduplication**: when two callers ask for the same key concurrently, an instance keeps a per-key promise so only one `resource()` runs and both callers receive its result. Dedup is policy-dependent (see each section below).
 
+| Policy                                                        | Returns cached value                 | Calls `resource()`                               | In-flight dedup |
+| ------------------------------------------------------------- | ------------------------------------ | ------------------------------------------------ | --------------- |
+| [`cache-only`](#cache-only-default) _(default)_               | Always, if present                   | Only on miss                                     | Yes             |
+| [`network-only`](#network-only)                               | Never                                | Every call                                       | No              |
+| [`network-only-non-concurrent`](#network-only-non-concurrent) | Never                                | Every call (one per concurrent burst)            | Yes             |
+| [`max-age`](#max-age)                                         | If `Date.now() - storedAt <= maxAge` | On miss or expiry                                | Yes             |
+| [`stale-while-revalidate`](#stale-while-revalidate)           | Always, if present (even stale)      | On miss, or in background when `maxAge` exceeded | Yes             |
+
 ### `cache-only` _(default)_
 
 Returns any cached value, regardless of age. On miss, calls `resource()` once and writes to every bucket. Concurrent miss callers share one in-flight `resource()` call.

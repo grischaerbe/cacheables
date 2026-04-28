@@ -6,44 +6,42 @@
 
 A small, typed cache with composable storage buckets and a handful of cache policies, written in TypeScript.
 
-- Elegant syntax: **wrap existing async calls** with `cache.remember(...)`.
-- **Multilayer storage**: compose a fast in-memory L1 with any L2 you write (filesystem, Redis, S3, …). Reads cascade L1 → Ln; on any hit the engine fills missing layers.
-- **Fully typed results**, including a generic `TMeta` parameter for sidecar metadata.
-- Supports different **cache policies**.
+- **Wrap any async call** with `cache.remember(...)` — `remember` is both getter and setter.
+- **Multilayer storage**: stack a fast in-memory L1 with any L2 you write (filesystem, Redis, S3, …). Reads cascade L1 → Ln; on any hit, missing layers are back-filled.
+- **Five cache policies**, including `stale-while-revalidate`, with concurrency-safe deduplication where it makes sense.
+- **Fully typed**, with a generic `TMeta` parameter for sidecar metadata (etag, ttl, version, …).
+- **Required namespace prefix** so multiple instances can share a bucket without collisions.
 - Helper to build cache keys.
-- Required **namespace** prefix so multiple instances can share a bucket without collisions.
-- Works in the browser and Node.js.
-- **No dependencies**.
+- Works in browser and Node.js. **No dependencies.**
 
 ```ts
 import { Cacheable, MemoryBucket } from 'cacheables'
 
+// 'app' is the namespace — every key is stored under `app:<key>`.
+// `buckets` is the layered storage stack; the first entry is L1.
 const cache = new Cacheable('app', { buckets: [new MemoryBucket()] })
 
-cache.remember(() => fetch('https://some-url.com/api'), 'key')
+// First call: misses, calls the resource, writes to every bucket.
+// Subsequent calls: hit, return the cached value without re-fetching.
+const data = await cache.remember(() => fetch('https://some-url.com/api'), 'key')
 ```
 
 - [Installation](#installation)
-- [Usage](#usage)
 - [API](#api)
   - [new Cacheable(namespace, options)](#new-cacheablenamespace-options-cacheabletmeta)
   - [cache.remember(resource, key)](#cacherememberresource-key-promiset)
-  - [cache.delete(key)](#cachedeletekey-promisevoid)
-  - [cache.clear()](#cacheclear-promisevoid)
+  - [cache.delete(key) / cache.clear()](#cachedeletekey-promisevoid--cacheclear-promisevoid)
   - [cache.meta(key)](#cachemetakey-promisetmeta--undefined)
   - [Cacheable.key(...args)](#cacheablekeyargs-string)
 - [Buckets](#buckets)
-  - [`IBucket` contract](#ibucket-contract)
-  - [Built-in `MemoryBucket`](#built-in-memorybucket)
-  - [Writing your own bucket](#writing-your-own-bucket)
-  - [Cascade behavior](#cascade-behavior)
-  - [Typed metadata (`TMeta`)](#typed-metadata-tmeta)
-- [Logger](#logger)
-  - [`ILogger` contract](#ilogger-contract)
-  - [Built-in `ConsoleLogger`](#built-in-consolelogger)
-  - [Writing your own logger](#writing-your-own-logger)
-- [Namespacing](#namespacing)
 - [Cache Policies](#cache-policies)
+  - [`cache-only` (default)](#cache-only-default)
+  - [`network-only`](#network-only)
+  - [`network-only-non-concurrent`](#network-only-non-concurrent)
+  - [`max-age`](#max-age)
+  - [`stale-while-revalidate`](#stale-while-revalidate)
+- [Logger](#logger)
+- [Namespacing](#namespacing)
 - [Migrating from v2 → v3](#migrating-from-v2--v3)
 - [License](#license)
 
@@ -52,27 +50,6 @@ cache.remember(() => fetch('https://some-url.com/api'), 'key')
 ```bash
 npm install cacheables
 ```
-
-## Usage
-
-```ts
-import { Cacheable, MemoryBucket } from 'cacheables'
-
-const apiUrl = 'https://goweather.herokuapp.com/weather/Karlsruhe'
-
-const cache = new Cacheable('weather', {
-  buckets: [new MemoryBucket()],
-  policy: 'max-age',
-  maxAge: 5_000,
-})
-
-const getWeather = () => cache.remember(() => fetch(apiUrl), 'weather')
-
-await getWeather() // miss — fetched
-await getWeather() // hit — cached
-```
-
-`remember` is both getter and setter. The first time a key is requested it calls the resource and stores the result in every configured bucket; subsequent reads cascade through the buckets until one returns a hit.
 
 ## API
 
@@ -96,27 +73,23 @@ type CacheableOptions<TMeta extends IBaseMeta = IBaseMeta> = {
 )
 ```
 
-`namespace` is prefixed onto every key passed to buckets as `${namespace}:${key}`, isolating instances that share a bucket. `buckets` must be a non-empty array; the constructor throws `Error('At least one bucket is required')` otherwise. The first bucket is L1 (fastest, queried first); the rest form deeper layers.
+`namespace` is prefixed onto every key as `${namespace}:${key}`, isolating instances that share a bucket. `buckets` must be a non-empty array (the constructor throws `Error('At least one bucket is required')` otherwise); the first bucket is L1, the rest form deeper layers.
 
 ### `cache.remember(resource, key): Promise<T>`
 
-Resolves to the cached value if present (subject to policy), otherwise calls `resource()` and stores the result in every bucket.
+Resolves to the cached value if present (subject to policy); otherwise calls `resource()` and writes to every bucket.
 
-### `cache.delete(key): Promise<void>`
+### `cache.delete(key): Promise<void>` / `cache.clear(): Promise<void>`
 
-Deletes the entry from every bucket.
-
-### `cache.clear(): Promise<void>`
-
-Clears every bucket and the in-flight registry.
+`delete` removes the entry from every bucket. `clear` wipes every bucket and the in-flight registry. Both are async — `await` them.
 
 ### `cache.meta(key): Promise<TMeta | undefined>`
 
-Returns the meta from the highest-priority layer that has the key — useful for inspecting sidecar fields like `etag`, `ttl`, etc.
+Returns the meta from the highest-priority layer that has the key, or `undefined` if no layer has it. Useful to inspect sidecar fields (`etag`, `ttl`, …) and to test for presence.
 
 ### `Cacheable.key(...args): string`
 
-Joins the parts with `:`. Identical to v2.
+Joins parts with `:`.
 
 ```ts
 Cacheable.key('user', 42) // 'user:42'
@@ -144,48 +117,12 @@ interface IBucket<TMeta extends IBaseMeta = IBaseMeta> {
 
 Rules:
 
-- `meta` MUST be cheap. The engine probes it on every layer for every read.
-- `read` returns `undefined` when the entry is absent and `{ value }` when it's present — the wrapper exists so buckets can store entries whose value is itself `undefined` without colliding with the absence signal.
-- When `write` receives a `meta`, the bucket MUST persist `meta.storedAt` verbatim (other fields MAY be transformed). This guarantees `max-age` semantics stay coherent across layers.
+- `meta` MUST be cheap. The engine probes it on every layer for every read. A typical L2 keeps a sidecar (file, table, key/value entry) so probes don't hit the value blob.
+- `read` returns `undefined` for absence and `{ value }` for presence — the wrapper lets buckets store entries whose value is itself `undefined` without colliding with the absence signal.
+- When `write` receives a `meta`, the bucket MUST persist `meta.storedAt` verbatim (other fields MAY be transformed). This keeps `max-age` semantics coherent across layers.
 - When `write` is called with no `meta`, the bucket MUST synthesize one with `storedAt: Date.now()`.
 - `clear` MUST remove every entry the bucket manages.
 - Any throw from any bucket rejects the surrounding `remember()` call. There is no per-bucket error suppression.
-
-### Built-in `MemoryBucket`
-
-Ships with the package; covers the common in-memory use case.
-
-```ts
-import { Cacheable, MemoryBucket } from 'cacheables'
-
-const cache = new Cacheable('app', { buckets: [new MemoryBucket()] })
-```
-
-### Writing your own bucket
-
-Implement `IBucket`. The contract is small enough that filesystem, Redis, IndexedDB, or S3 buckets are easy to add without ceremony. A typical L2 keeps a sidecar (file, table, key/value entry) so `meta()` is cheap.
-
-```ts
-import type { IBucket, IBaseMeta } from 'cacheables'
-
-class FileSystemBucket implements IBucket {
-  async read<T>(key: string): Promise<{ value: T } | undefined> {
-    /* … */
-  }
-  async write<T>(key: string, value: T, meta?: IBaseMeta): Promise<void> {
-    /* … */
-  }
-  async meta(key: string): Promise<IBaseMeta | undefined> {
-    /* … */
-  }
-  async delete(key: string): Promise<void> {
-    /* … */
-  }
-  async clear(): Promise<void> {
-    /* … */
-  }
-}
-```
 
 ### Cascade behavior
 
@@ -197,13 +134,39 @@ const cache = new Cacheable('app', {
 })
 ```
 
-- **Read**: probe `meta()` on every layer in parallel; the first layer that satisfies the freshness predicate is the hit. Read its value, and back-fill every other layer that is still missing the key — using the hit layer's meta so `storedAt` is preserved everywhere.
-- **Miss + resource()**: write to L1 with no meta (L1 synthesizes its own), read meta back from L1, then write to L2..Ln with that exact meta. All layers converge to the same `storedAt`.
-- **Stale L1 + fresh L2 (under `max-age`)**: the freshness predicate filters per-layer, so the engine returns the fresh L2 value and back-fills L1.
+- **Read**: probe `meta()` on every layer in parallel; the first layer satisfying the freshness predicate is the hit. Read its value, then back-fill every layer above and below that is still missing the key, using the hit layer's meta — `storedAt` is preserved everywhere.
+- **Miss + `resource()`**: write to L1 with no meta (L1 synthesizes its own), read meta back from L1, then write to L2..Ln with that exact meta. All layers converge on the same `storedAt`.
+- **Stale L1 + fresh L2** (under `max-age`): the freshness predicate filters per-layer, so the engine returns the fresh L2 value and back-fills L1.
+
+### Built-in `MemoryBucket`
+
+Ships with the package; covers the common in-memory case.
+
+```ts
+import { Cacheable, MemoryBucket } from 'cacheables'
+
+const cache = new Cacheable('app', { buckets: [new MemoryBucket()] })
+```
+
+### Writing your own bucket
+
+Implement `IBucket`. The contract is small enough that filesystem, Redis, IndexedDB, or S3 buckets are easy to add.
+
+```ts
+import type { IBucket, IBaseMeta } from 'cacheables'
+
+class FileSystemBucket implements IBucket {
+  async read<T>(key: string): Promise<{ value: T } | undefined> { /* … */ }
+  async write<T>(key: string, value: T, meta?: IBaseMeta): Promise<void> { /* … */ }
+  async meta(key: string): Promise<IBaseMeta | undefined> { /* … */ }
+  async delete(key: string): Promise<void> { /* … */ }
+  async clear(): Promise<void> { /* … */ }
+}
+```
 
 ### Typed metadata (`TMeta`)
 
-`Cacheable` is generic in `TMeta`. Extend it to carry sidecar fields:
+`Cacheable` is generic in `TMeta`. Extend `IBaseMeta` to carry sidecar fields:
 
 ```ts
 import { Cacheable, type IBaseMeta, type IBucket } from 'cacheables'
@@ -216,20 +179,137 @@ class ETagBucket implements IBucket<ETagMeta> {
   // read / write / meta / delete / clear …
 }
 
-const cache = new Cacheable<ETagMeta>('app', {
-  buckets: [new ETagBucket()],
-})
+const cache = new Cacheable<ETagMeta>('app', { buckets: [new ETagBucket()] })
 
 const meta = await cache.meta('user:42') // typed as ETagMeta | undefined
 ```
 
-Every bucket passed to the constructor must satisfy `IBucket<ETagMeta>`, and the TypeScript compiler enforces it. The built-in `MemoryBucket` only implements `IBucket<IBaseMeta>`, so it can't be used in a `Cacheable` instance with a custom `TMeta` — write a custom bucket (or wrap `MemoryBucket`) when you need extended metadata.
+Every bucket passed to the constructor must satisfy `IBucket<ETagMeta>`, enforced by the compiler. The built-in `MemoryBucket` only implements `IBucket<IBaseMeta>`, so it can't be used in a `Cacheable` instance with a custom `TMeta` — write a custom bucket (or wrap `MemoryBucket`) when you need extended metadata.
+
+## Cache Policies
+
+The policy is set once on the constructor and applies to every `remember()` call on that instance. Two mechanics matter across policies:
+
+- **Freshness**: whether a cached value qualifies for return without re-fetching. Only `max-age` and `stale-while-revalidate` look at `storedAt`.
+- **In-flight deduplication**: when two callers ask for the same key concurrently, an instance keeps a per-key promise so only one `resource()` runs and both callers receive its result. Dedup is policy-dependent (see each section below).
+
+### `cache-only` *(default)*
+
+Returns any cached value, regardless of age. On miss, calls `resource()` once and writes to every bucket. Concurrent miss callers share one in-flight `resource()` call.
+
+```ts
+const cache = new Cacheable('app', {
+  buckets: [new MemoryBucket()],
+  // policy: 'cache-only' (the default — can be omitted)
+})
+
+const u = () => cache.remember(() => fetchUser(1), 'user:1')
+
+await u() // miss — fetches once, writes
+await u() // hit — returns cached value, no fetch
+
+// Concurrent miss: a single fetch is shared across both awaiters.
+await Promise.all([u(), u()])
+```
+
+Use this when the underlying data is effectively immutable for the lifetime of the cache (e.g. content addressed by hash) or when you handle invalidation manually via `cache.delete(key)`.
+
+### `network-only`
+
+Always calls `resource()`, always overwrites the cache. **No deduplication** — concurrent callers each fire their own `resource()`. The cache exists only to seed reads from sibling instances or to populate downstream layers.
+
+```ts
+const cache = new Cacheable('app', {
+  buckets: [new MemoryBucket()],
+  policy: 'network-only',
+})
+
+// Both calls fetch in parallel; both writes land on the cache.
+await Promise.all([
+  cache.remember(() => fetchUser(1), 'user:1'),
+  cache.remember(() => fetchUser(1), 'user:1'),
+])
+```
+
+Reach for this when staleness is unacceptable and the cost of duplicate concurrent fetches is acceptable (or impossible — e.g. side-effecting POSTs that mustn't be coalesced).
+
+### `network-only-non-concurrent`
+
+Always calls `resource()`, always overwrites the cache, **but** concurrent callers share one in-flight request. Equivalent to `network-only` for serial calls; equivalent to `cache-only`'s dedup behavior for concurrent calls.
+
+```ts
+const cache = new Cacheable('app', {
+  buckets: [new MemoryBucket()],
+  policy: 'network-only-non-concurrent',
+})
+
+// One fetch shared across the three concurrent awaiters; one write to the cache.
+const [a, b, c] = await Promise.all([
+  cache.remember(() => fetchUser(1), 'user:1'),
+  cache.remember(() => fetchUser(1), 'user:1'),
+  cache.remember(() => fetchUser(1), 'user:1'),
+])
+// Subsequent calls fetch again; this policy never returns the previously cached value.
+```
+
+Right when you always want fresh data but want to suppress request thunder under burst load.
+
+### `max-age`
+
+Returns the cached value if `Date.now() - meta.storedAt <= maxAge`, otherwise calls `resource()` and overwrites the cache. Concurrent miss/expired callers share one in-flight `resource()`. The freshness predicate runs per-layer during the cascade probe, so a stale L1 with a fresh L2 yields a hit on L2 and a back-fill of L1.
+
+```ts
+const cache = new Cacheable('app', {
+  buckets: [new MemoryBucket()],
+  policy: 'max-age',
+  maxAge: 5_000, // 5 seconds
+})
+
+await cache.remember(() => fetchUser(1), 'user:1') // miss — fetches
+await cache.remember(() => fetchUser(1), 'user:1') // hit (within 5s)
+
+// 6 seconds later …
+await cache.remember(() => fetchUser(1), 'user:1') // expired — re-fetches, overwrites
+```
+
+Multilayer note: a stale L1 doesn't force a network call when L2 still has a fresh value:
+
+```ts
+const cache = new Cacheable('app', {
+  buckets: [new MemoryBucket(/* short-lived */), new FileSystemBucket()],
+  policy: 'max-age',
+  maxAge: 60_000,
+})
+// L1 evicts after 10s but L2 still has a value with storedAt 30s ago:
+// the engine returns the L2 value and back-fills L1 with the same storedAt.
+```
+
+### `stale-while-revalidate`
+
+Returns the cached value immediately when it exists, **even if stale**. If `maxAge` is unset *or* exceeded, fires a background `resource()` call to refresh — the current caller does not wait for it. With no cached value, it behaves like `network-only-non-concurrent` (caller waits, concurrent callers dedup).
+
+```ts
+const cache = new Cacheable('app', {
+  buckets: [new MemoryBucket()],
+  policy: 'stale-while-revalidate',
+  maxAge: 5_000, // optional — without it, every read triggers a background revalidation
+})
+
+await cache.remember(() => fetchUser(1), 'user:1') // miss — caller waits
+
+// Within 5s: pure cache hit, no revalidation.
+await cache.remember(() => fetchUser(1), 'user:1')
+
+// After 5s: returns stale value immediately, kicks off a background fetch
+// that overwrites the cache when it resolves.
+const stale = await cache.remember(() => fetchUser(1), 'user:1')
+```
+
+Background revalidation errors are swallowed (the stale value has already been served). Concurrent stale reads share one revalidation. Choose this policy when latency matters more than absolute freshness — e.g. dashboards where a slightly outdated reading is preferable to a spinner.
 
 ## Logger
 
 Pass a `logger` to surface what the engine is doing. Without one, the engine is silent.
-
-### `ILogger` contract
 
 ```ts
 interface ILogger {
@@ -237,16 +317,14 @@ interface ILogger {
 }
 ```
 
-When a `logger` is configured, every `cache.remember(...)` call emits two messages — timing, then hit count:
+Every `cache.remember(...)` emits two messages — timing, then hit count:
 
 ```
 Cacheable "weather": 12ms
 Cacheable "weather": hits: 1
 ```
 
-### Built-in `ConsoleLogger`
-
-Forwards each message to `console.log`. Useful as a default during development.
+The built-in `ConsoleLogger` forwards to `console.log`:
 
 ```ts
 import { Cacheable, ConsoleLogger, MemoryBucket } from 'cacheables'
@@ -257,8 +335,6 @@ const cache = new Cacheable('app', {
 })
 ```
 
-### Writing your own logger
-
 Any object with a `log(message: string)` method satisfies `ILogger`, so wrapping an existing logger is a one-liner:
 
 ```ts
@@ -268,17 +344,14 @@ import { Cacheable, MemoryBucket, type ILogger } from 'cacheables'
 const pinoLogger = pino()
 const logger: ILogger = { log: (m) => pinoLogger.info(m) }
 
-const cache = new Cacheable('app', {
-  buckets: [new MemoryBucket()],
-  logger,
-})
+const cache = new Cacheable('app', { buckets: [new MemoryBucket()], logger })
 ```
 
 The `logger` field on a `Cacheable` instance is mutable — assign a new logger (or `undefined`) at runtime to flip logging on or off.
 
 ## Namespacing
 
-`namespace` is required and is the constructor's first positional argument: every bucket call sees keys prefixed with `${namespace}:`. This isolates instances that share the same bucket, so you must pick a namespace at construction time even when only one instance uses a bucket.
+`namespace` is the constructor's first positional argument and is required. Every bucket call sees keys prefixed with `${namespace}:`, so two instances can safely share a bucket:
 
 ```ts
 const bucket = new MemoryBucket()
@@ -286,31 +359,11 @@ const tenantA = new Cacheable('tenant-a', { buckets: [bucket] })
 const tenantB = new Cacheable('tenant-b', { buckets: [bucket] })
 ```
 
-Two instances can share a bucket without colliding. `delete` and `meta` respect the namespace; `clear()` wipes the entire underlying bucket (it has no notion of which keys belong to which namespace), so reach for it only when you really mean _everything_.
-
-## Cache Policies
-
-| Policy                        | Behaviour                                                                                              |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `cache-only` _(default)_      | Return any cached value; on miss, call `resource()`. Concurrent miss callers share one fetch.          |
-| `network-only`                | Always call `resource()`; concurrent calls each get their own.                                         |
-| `network-only-non-concurrent` | Always call `resource()`, but concurrent calls share one in-flight request.                            |
-| `max-age` _(maxAge required)_ | Return cache if `Date.now() - storedAt <= maxAge`, otherwise fetch.                                    |
-| `stale-while-revalidate`      | Return the cached value immediately; if `maxAge` is unset or exceeded, fire a background revalidation. |
-
-```ts
-new Cacheable('app', {
-  buckets: [new MemoryBucket()],
-  policy: 'max-age',
-  maxAge: 1_000,
-})
-```
+`delete` and `meta` respect the namespace; `clear()` wipes the entire underlying bucket — it has no notion of which keys belong to which namespace. Reach for `clear()` only when you mean *everything*.
 
 ## Migrating from v2 → v3
 
 v2 was an in-memory cache with per-call options and a synchronous surface. v3 introduces pluggable storage (buckets), required namespacing, an instance-level cache policy, and a fully async API.
-
-Before / after:
 
 ```ts
 // v2

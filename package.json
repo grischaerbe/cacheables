@@ -18,6 +18,7 @@
     "test:watch": "jest --watch",
     "typecheck": "tsc --noEmit",
     "eslint": "eslint --fix src/**/*.ts",
+    "lint": "eslint src/**/*.ts",
     "prepublish": "npm run eslint && npm run typecheck && npm test && npm run build",
     "build": "rimraf dist && tsc -p tsconfig.mjs.json && tsc -p tsconfig.cjs.json && tsx ./fixup-packages.ts"
   },

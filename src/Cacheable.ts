@@ -69,30 +69,46 @@ export class Cacheable<TMeta extends IBaseMeta = IBaseMeta> {
     return value
   }
 
+  async resolve<T>(resource: () => Promise<T>, key: string): Promise<TMeta> {
+    const { logger } = this
+    const start = logger ? performance.now() : 0
+
+    const fullKey = this.#fullKey(key)
+    const { meta, hit } = await this.#runPolicy<T>(resource, fullKey)
+
+    if (logger) {
+      const elapsed = Math.round((performance.now() - start) * 10) / 10
+      logger.log(`Cacheable "${key}": ${hit ? 'HIT' : 'MISS'} ${elapsed}ms`)
+    }
+
+    return meta
+  }
+
   async #runPolicy<T>(
     resource: () => Promise<T>,
     fullKey: string,
-  ): Promise<{ value: T; hit: boolean }> {
+  ): Promise<{ value: T; hit: boolean; meta: TMeta }> {
     switch (this.#policy) {
       case 'cache-only': {
         return this.#dedup(fullKey, async () => {
           const cached = await this.#cascadeRead<T>(fullKey)
-          if (cached) return { value: cached.value, hit: true }
+          if (cached)
+            return { value: cached.value, hit: true, meta: cached.meta }
           const value = await resource()
-          await this.#cascadeWrite(fullKey, value)
-          return { value, hit: false }
+          const meta = await this.#cascadeWrite(fullKey, value)
+          return { value, hit: false, meta }
         })
       }
       case 'network-only': {
         const value = await resource()
-        await this.#cascadeWrite(fullKey, value)
-        return { value, hit: false }
+        const meta = await this.#cascadeWrite(fullKey, value)
+        return { value, hit: false, meta }
       }
       case 'network-only-non-concurrent': {
         return this.#dedup(fullKey, async () => {
           const value = await resource()
-          await this.#cascadeWrite(fullKey, value)
-          return { value, hit: false }
+          const meta = await this.#cascadeWrite(fullKey, value)
+          return { value, hit: false, meta }
         })
       }
       case 'max-age': {
@@ -102,10 +118,11 @@ export class Cacheable<TMeta extends IBaseMeta = IBaseMeta> {
             fullKey,
             (m) => Date.now() - m.storedAt <= maxAge,
           )
-          if (cached) return { value: cached.value, hit: true }
+          if (cached)
+            return { value: cached.value, hit: true, meta: cached.meta }
           const value = await resource()
-          await this.#cascadeWrite(fullKey, value)
-          return { value, hit: false }
+          const meta = await this.#cascadeWrite(fullKey, value)
+          return { value, hit: false, meta }
         })
       }
       case 'stale-while-revalidate': {
@@ -117,24 +134,24 @@ export class Cacheable<TMeta extends IBaseMeta = IBaseMeta> {
           Date.now() - cached.meta.storedAt > maxAge
 
         if (cached && !isStale) {
-          return { value: cached.value, hit: true }
+          return { value: cached.value, hit: true, meta: cached.meta }
         }
 
         if (cached && isStale) {
           this.#dedup(fullKey, async () => {
             const value = await resource()
-            await this.#cascadeWrite(fullKey, value)
-            return { value, hit: false }
+            const meta = await this.#cascadeWrite(fullKey, value)
+            return { value, hit: false, meta }
           }).catch(() => {
             /* swallow background revalidation errors */
           })
-          return { value: cached.value, hit: true }
+          return { value: cached.value, hit: true, meta: cached.meta }
         }
 
         return this.#dedup(fullKey, async () => {
           const value = await resource()
-          await this.#cascadeWrite(fullKey, value)
-          return { value, hit: false }
+          const meta = await this.#cascadeWrite(fullKey, value)
+          return { value, hit: false, meta }
         })
       }
     }
@@ -190,15 +207,19 @@ export class Cacheable<TMeta extends IBaseMeta = IBaseMeta> {
     if (writes.length > 0) await Promise.all(writes)
   }
 
-  async #cascadeWrite<T>(fullKey: string, value: T): Promise<void> {
+  async #cascadeWrite<T>(fullKey: string, value: T): Promise<TMeta> {
     const [l1, ...rest] = this.#buckets
-    if (l1 === undefined) return
+    if (l1 === undefined) {
+      throw new Error('At least one bucket is required')
+    }
     await l1.write(fullKey, value)
-    if (rest.length === 0) return
     const meta = await l1.meta(fullKey)
     if (meta === undefined) {
       throw new Error('L1 bucket did not persist meta after write')
     }
-    await Promise.all(rest.map((b) => b.write(fullKey, value, meta)))
+    if (rest.length > 0) {
+      await Promise.all(rest.map((b) => b.write(fullKey, value, meta)))
+    }
+    return meta
   }
 }

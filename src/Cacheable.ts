@@ -16,12 +16,12 @@ export class Cacheable<TMeta extends IBaseMeta = IBaseMeta> {
   #inflight = new Map<string, Promise<unknown>>()
   #hits = new Map<string, number>()
 
-  constructor(options: CacheableOptions<TMeta>) {
+  constructor(namespace: string, options: CacheableOptions<TMeta>) {
     if (!options.buckets || options.buckets.length === 0) {
       throw new Error('At least one bucket is required')
     }
     this.#buckets = options.buckets
-    this.#namespace = options.namespace
+    this.#namespace = namespace
     this.logger = options.logger
     this.#policy = options.policy ?? 'cache-only'
     this.#maxAge =

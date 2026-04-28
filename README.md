@@ -18,7 +18,7 @@ A small, typed cache with composable storage buckets and a handful of cache poli
 ```ts
 import { Cacheable, MemoryBucket } from 'cacheables'
 
-const cache = new Cacheable({ buckets: [new MemoryBucket()], namespace: 'app' })
+const cache = new Cacheable('app', { buckets: [new MemoryBucket()] })
 
 cache.remember(() => fetch('https://some-url.com/api'), 'key')
 ```
@@ -26,7 +26,7 @@ cache.remember(() => fetch('https://some-url.com/api'), 'key')
 - [Installation](#installation)
 - [Usage](#usage)
 - [API](#api)
-  - [new Cacheable(options)](#new-cacheableoptions-cacheabletmeta)
+  - [new Cacheable(namespace, options)](#new-cacheablenamespace-options-cacheabletmeta)
   - [cache.remember(resource, key)](#cacherememberresource-key-promiset)
   - [cache.delete(key)](#cachedeletekey-promisevoid)
   - [cache.clear()](#cacheclear-promisevoid)
@@ -60,9 +60,8 @@ import { Cacheable, MemoryBucket } from 'cacheables'
 
 const apiUrl = 'https://goweather.herokuapp.com/weather/Karlsruhe'
 
-const cache = new Cacheable({
+const cache = new Cacheable('weather', {
   buckets: [new MemoryBucket()],
-  namespace: 'weather',
   policy: 'max-age',
   maxAge: 5_000,
 })
@@ -77,12 +76,16 @@ await getWeather() // hit — cached
 
 ## API
 
-### `new Cacheable(options): Cacheable<TMeta>`
+### `new Cacheable(namespace, options): Cacheable<TMeta>`
 
 ```ts
+new Cacheable<TMeta extends IBaseMeta = IBaseMeta>(
+  namespace: string,
+  options: CacheableOptions<TMeta>,
+)
+
 type CacheableOptions<TMeta extends IBaseMeta = IBaseMeta> = {
   buckets: IBucket<TMeta>[] // REQUIRED, L1 first
-  namespace: string // REQUIRED — bucket keys become `${namespace}:${key}`
   logger?: ILogger // default: undefined (no logging)
 } & (
   | { policy?: 'cache-only' } // default
@@ -93,7 +96,7 @@ type CacheableOptions<TMeta extends IBaseMeta = IBaseMeta> = {
 )
 ```
 
-`buckets` must be a non-empty array; the constructor throws `Error('At least one bucket is required')` otherwise. The first bucket is L1 (fastest, queried first); the rest form deeper layers.
+`namespace` is prefixed onto every key passed to buckets as `${namespace}:${key}`, isolating instances that share a bucket. `buckets` must be a non-empty array; the constructor throws `Error('At least one bucket is required')` otherwise. The first bucket is L1 (fastest, queried first); the rest form deeper layers.
 
 ### `cache.remember(resource, key): Promise<T>`
 
@@ -155,7 +158,7 @@ Ships with the package; covers the common in-memory use case.
 ```ts
 import { Cacheable, MemoryBucket } from 'cacheables'
 
-const cache = new Cacheable({ buckets: [new MemoryBucket()], namespace: 'app' })
+const cache = new Cacheable('app', { buckets: [new MemoryBucket()] })
 ```
 
 ### Writing your own bucket
@@ -187,9 +190,8 @@ class FileSystemBucket implements IBucket {
 ### Cascade behavior
 
 ```ts
-const cache = new Cacheable({
+const cache = new Cacheable('app', {
   buckets: [new MemoryBucket(), new FileSystemBucket()],
-  namespace: 'app',
   policy: 'max-age',
   maxAge: 60_000,
 })
@@ -214,9 +216,8 @@ class ETagBucket implements IBucket<ETagMeta> {
   // read / write / meta / delete / clear …
 }
 
-const cache = new Cacheable<ETagMeta>({
+const cache = new Cacheable<ETagMeta>('app', {
   buckets: [new ETagBucket()],
-  namespace: 'app',
 })
 
 const meta = await cache.meta('user:42') // typed as ETagMeta | undefined
@@ -250,9 +251,8 @@ Forwards each message to `console.log`. Useful as a default during development.
 ```ts
 import { Cacheable, ConsoleLogger, MemoryBucket } from 'cacheables'
 
-const cache = new Cacheable({
+const cache = new Cacheable('app', {
   buckets: [new MemoryBucket()],
-  namespace: 'app',
   logger: new ConsoleLogger(),
 })
 ```
@@ -268,9 +268,8 @@ import { Cacheable, MemoryBucket, type ILogger } from 'cacheables'
 const pinoLogger = pino()
 const logger: ILogger = { log: (m) => pinoLogger.info(m) }
 
-const cache = new Cacheable({
+const cache = new Cacheable('app', {
   buckets: [new MemoryBucket()],
-  namespace: 'app',
   logger,
 })
 ```
@@ -279,12 +278,12 @@ The `logger` field on a `Cacheable` instance is mutable — assign a new logger 
 
 ## Namespacing
 
-`namespace` is required: every bucket call sees keys prefixed with `${namespace}:`. This isolates instances that share the same bucket, so you must pick a namespace at construction time even when only one instance uses a bucket.
+`namespace` is required and is the constructor's first positional argument: every bucket call sees keys prefixed with `${namespace}:`. This isolates instances that share the same bucket, so you must pick a namespace at construction time even when only one instance uses a bucket.
 
 ```ts
 const bucket = new MemoryBucket()
-const tenantA = new Cacheable({ buckets: [bucket], namespace: 'tenant-a' })
-const tenantB = new Cacheable({ buckets: [bucket], namespace: 'tenant-b' })
+const tenantA = new Cacheable('tenant-a', { buckets: [bucket] })
+const tenantB = new Cacheable('tenant-b', { buckets: [bucket] })
 ```
 
 Two instances can share a bucket without colliding. `delete` and `meta` respect the namespace; `clear()` wipes the entire underlying bucket (it has no notion of which keys belong to which namespace), so reach for it only when you really mean _everything_.
@@ -300,9 +299,8 @@ Two instances can share a bucket without colliding. `delete` and `meta` respect 
 | `stale-while-revalidate`      | Return the cached value immediately; if `maxAge` is unset or exceeded, fire a background revalidation. |
 
 ```ts
-new Cacheable({
+new Cacheable('app', {
   buckets: [new MemoryBucket()],
-  namespace: 'app',
   policy: 'max-age',
   maxAge: 1_000,
 })
@@ -330,9 +328,8 @@ await cache.cacheable(() => fetch(url), 'weather', {
 // v3
 import { Cacheable, MemoryBucket, ConsoleLogger } from 'cacheables'
 
-const cache = new Cacheable({
+const cache = new Cacheable('weather', {
   buckets: [new MemoryBucket()],
-  namespace: 'weather',
   policy: 'max-age',
   maxAge: 5_000,
   logger: new ConsoleLogger(),
@@ -345,21 +342,21 @@ Breaking changes:
 
 - **Class renamed** `Cacheables` → `Cacheable`. Update imports and `new Cacheables(...)` call sites. The static helper moves with it: `Cacheables.key(...)` → `Cacheable.key(...)` (behaviour unchanged).
 - **Method renamed** `cache.cacheable(...)` → `cache.remember(...)`.
-- **Cache policy moved to the constructor.** v2 took `cachePolicy` and `maxAge` as a per-call third argument; v3 has no per-call options. Pass `policy` (and `maxAge` where required) once on `new Cacheable({ ... })`. The field is `policy`, not `cachePolicy`. A single instance now serves a single policy — split into multiple instances if you previously mixed policies on one cache.
-- **`buckets` is required** (replaces v2's implicit in-memory store). `new Cacheable()` no longer compiles. `new Cacheable({ buckets: [new MemoryBucket()], namespace: 'app' })` reproduces the v2 default.
-- **`namespace` is required.** Every bucket call sees keys prefixed with `${namespace}:`. Pick one even if only one instance writes to the bucket.
+- **Cache policy moved to the constructor.** v2 took `cachePolicy` and `maxAge` as a per-call third argument; v3 has no per-call options. Pass `policy` (and `maxAge` where required) once on `new Cacheable(namespace, { ... })`. The field is `policy`, not `cachePolicy`. A single instance now serves a single policy — split into multiple instances if you previously mixed policies on one cache.
+- **`buckets` is required** (replaces v2's implicit in-memory store). `new Cacheable()` no longer compiles. `new Cacheable('app', { buckets: [new MemoryBucket()] })` reproduces the v2 default.
+- **`namespace` is required and positional.** It's the constructor's first argument, prefixed onto every bucket key as `${namespace}:`. Pick one even if only one instance writes to the bucket.
 - **`enabled` option removed.** If you need to bypass the cache, call `resource()` directly instead of `cache.remember(...)`.
 - **`keys()` removed.** Enumerating heterogeneous async layers (some non-enumerable, like CDNs) has no single sensible semantic.
 - **`delete` and `clear` are async.** They now return `Promise<void>` — add `await`.
 - **`isCached` removed.** Use `cache.meta(key)` instead — it returns `undefined` when the key is absent and the meta object otherwise.
 - **`log` / `logTiming` replaced by `logger`.** Pass `new ConsoleLogger()` to restore the previous default-on logging, or implement `ILogger` to route messages elsewhere. Timing now ships as a formatted string (`Cacheable "<key>": <Xms>`) instead of `console.time` / `timeEnd`.
-- **Options types reshaped.** v2's `CacheOptions` (constructor) and `CacheableOptions` (per-call) are gone. v3's constructor options type is `CacheableOptions` — same name as v2's per-call type, completely different shape (it now carries `buckets`, `namespace`, `policy`, and `logger`).
+- **Options types reshaped.** v2's `CacheOptions` (constructor) and `CacheableOptions` (per-call) are gone. v3's constructor options type is `CacheableOptions` — same name as v2's per-call type, completely different shape (it now carries `buckets`, `policy`, and `logger`; `namespace` is the constructor's first positional argument).
 - **Buckets can throw.** Any throw from any bucket rejects `remember()`. v2's in-memory store couldn't fail, so this is a new error surface to be aware of once you wire up a custom bucket.
 
 What's new:
 
 - **Multilayer storage.** Pass several buckets to compose tiers (e.g. `[memory, filesystem]`); reads cascade L1 → Ln and back-fill missing layers on every hit.
-- **Typed sidecar metadata.** `Cacheable<TMeta>` is generic; bucket implementations can persist fields like `etag` or `ttl` and `cache.meta(key)` returns them typed. Plain `new Cacheable({ buckets, namespace })` defaults to `Cacheable<IBaseMeta>` and needs no type changes.
+- **Typed sidecar metadata.** `Cacheable<TMeta>` is generic; bucket implementations can persist fields like `etag` or `ttl` and `cache.meta(key)` returns them typed. Plain `new Cacheable(namespace, { buckets })` defaults to `Cacheable<IBaseMeta>` and needs no type changes.
 
 ## License
 

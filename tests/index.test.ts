@@ -22,9 +22,8 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 describe('Cache operations', () => {
   it('Returns correct values', async () => {
-    const cache = new Cacheable({
+    const cache = new Cacheable('test', {
       buckets: [new MemoryBucket()],
-      namespace: 'test',
     })
     const value = 10
     const cachedValue = await cache.remember(() => mockedApiRequest(value), 'a')
@@ -33,9 +32,8 @@ describe('Cache operations', () => {
   })
 
   it('Stores multiple caches', async () => {
-    const cache = new Cacheable({
+    const cache = new Cacheable('test', {
       buckets: [new MemoryBucket()],
-      namespace: 'test',
     })
 
     const valueA = 10
@@ -56,9 +54,8 @@ describe('Cache operations', () => {
   })
 
   it('Deletes values', async () => {
-    const cache = new Cacheable({
+    const cache = new Cacheable('test', {
       buckets: [new MemoryBucket()],
-      namespace: 'test',
     })
 
     const value = 10
@@ -70,9 +67,8 @@ describe('Cache operations', () => {
   })
 
   it('Clears the cache', async () => {
-    const cache = new Cacheable({
+    const cache = new Cacheable('test', {
       buckets: [new MemoryBucket()],
-      namespace: 'test',
     })
 
     const value = 10
@@ -91,9 +87,8 @@ describe('Cache operations', () => {
   it('Logs correctly', async () => {
     console.log = jest.fn()
 
-    const cache = new Cacheable({
+    const cache = new Cacheable('test', {
       buckets: [new MemoryBucket()],
-      namespace: 'test',
       logger: new ConsoleLogger(),
     })
 
@@ -110,7 +105,7 @@ describe('Cache operations', () => {
   })
 
   it('Throws when constructed without buckets', () => {
-    expect(() => new Cacheable({ buckets: [], namespace: 'test' })).toThrow(
+    expect(() => new Cacheable('test', { buckets: [] })).toThrow(
       'At least one bucket is required',
     )
   })
@@ -123,9 +118,8 @@ describe('Cache operations', () => {
    * Assuming the time starts at 0
    */
   it('Handles race conditions correctly', async () => {
-    const cache = new Cacheable({
+    const cache = new Cacheable('test', {
       buckets: [new MemoryBucket()],
-      namespace: 'test',
       policy: 'max-age',
       maxAge: 100,
     })
@@ -153,9 +147,8 @@ describe('Cache operations', () => {
   it('Handles multiple calls correctly', async () => {
     console.log = jest.fn()
 
-    const cache = new Cacheable({
+    const cache = new Cacheable('test', {
       buckets: [new MemoryBucket()],
-      namespace: 'test',
       logger: new ConsoleLogger(),
       policy: 'max-age',
       maxAge: 100,
@@ -187,9 +180,8 @@ describe('Cache operations', () => {
   })
 
   it("Doesn't interfere with error handling", async () => {
-    const cache = new Cacheable({
+    const cache = new Cacheable('test', {
       buckets: [new MemoryBucket()],
-      namespace: 'test',
     })
     const rejecting = () => {
       return cache.remember(() => mockedApiRequest(0, 10, true), 'a')
@@ -198,9 +190,8 @@ describe('Cache operations', () => {
   })
 
   it("Doesn't cache rejected value", async () => {
-    const cache = new Cacheable({
+    const cache = new Cacheable('test', {
       buckets: [new MemoryBucket()],
-      namespace: 'test',
     })
     let errNo = 1
     const rejecting = () => {

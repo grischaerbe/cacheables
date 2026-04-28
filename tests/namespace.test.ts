@@ -3,8 +3,8 @@ import { Cacheable, MemoryBucket } from '../src'
 describe('namespace', () => {
   it('isolates entries between two instances sharing one bucket', async () => {
     const bucket = new MemoryBucket()
-    const a = new Cacheable({ buckets: [bucket], namespace: 'a' })
-    const b = new Cacheable({ buckets: [bucket], namespace: 'b' })
+    const a = new Cacheable('a', { buckets: [bucket] })
+    const b = new Cacheable('b', { buckets: [bucket] })
 
     await a.remember(async () => 'A', 'k')
     await b.remember(async () => 'B', 'k')
@@ -15,7 +15,7 @@ describe('namespace', () => {
 
   it('writes bucket keys with namespace prefix', async () => {
     const bucket = new MemoryBucket()
-    const a = new Cacheable({ buckets: [bucket], namespace: 'tenant1' })
+    const a = new Cacheable('tenant1', { buckets: [bucket] })
 
     await a.remember(async () => 'v', 'user:42')
 
@@ -25,8 +25,8 @@ describe('namespace', () => {
 
   it('delete on one namespace does not affect another', async () => {
     const bucket = new MemoryBucket()
-    const a = new Cacheable({ buckets: [bucket], namespace: 'a' })
-    const b = new Cacheable({ buckets: [bucket], namespace: 'b' })
+    const a = new Cacheable('a', { buckets: [bucket] })
+    const b = new Cacheable('b', { buckets: [bucket] })
 
     await a.remember(async () => 'A', 'k')
     await b.remember(async () => 'B', 'k')
@@ -39,8 +39,8 @@ describe('namespace', () => {
 
   it('clear from one namespace wipes shared bucket (documented caveat)', async () => {
     const bucket = new MemoryBucket()
-    const a = new Cacheable({ buckets: [bucket], namespace: 'a' })
-    const b = new Cacheable({ buckets: [bucket], namespace: 'b' })
+    const a = new Cacheable('a', { buckets: [bucket] })
+    const b = new Cacheable('b', { buckets: [bucket] })
 
     await a.remember(async () => 'A', 'k')
     await b.remember(async () => 'B', 'k')

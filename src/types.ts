@@ -100,15 +100,13 @@ export type Policy =
 export type CacheOptions = CacheOptionsBase & PolicyOptions
 
 /**
- * Constructor options for `Cacheable<TMeta>`.
+ * Constructor options for `Cacheable<TMeta>`. The namespace is passed
+ * as a positional argument; this bag carries everything else.
  *
- * `buckets` is required; the array is L1 first. `namespace` is
- * required and is prefixed onto every key passed to buckets as
- * `${namespace}:${key}`, isolating instances that share a bucket.
+ * `buckets` is required; the array is L1 first.
  */
 export type CacheableOptions<TMeta extends IBaseMeta = IBaseMeta> =
   CacheOptionsBase &
     PolicyOptions & {
       buckets: IBucket<TMeta>[]
-      namespace: string
     }

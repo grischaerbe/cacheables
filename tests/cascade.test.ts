@@ -64,7 +64,7 @@ describe('cascade behavior', () => {
     const seedMeta: IBaseMeta = { storedAt: Date.now() }
     const l1 = new FakeBucket({ key: 'test:k', value: 'v', meta: seedMeta })
     const l2 = new FakeBucket()
-    const cache = new Cacheable({ buckets: [l1, l2], namespace: 'test' })
+    const cache = new Cacheable('test', { buckets: [l1, l2] })
 
     const result = await cache.remember(async () => 'fresh', 'k')
 
@@ -87,7 +87,7 @@ describe('cascade behavior', () => {
       value: 'v',
       meta: { storedAt: 999 },
     })
-    const cache = new Cacheable({ buckets: [l1, l2], namespace: 'test' })
+    const cache = new Cacheable('test', { buckets: [l1, l2] })
 
     await cache.remember(async () => 'fresh', 'k')
 
@@ -99,7 +99,7 @@ describe('cascade behavior', () => {
     const l2Meta: IBaseMeta = { storedAt: 12345 }
     const l1 = new FakeBucket()
     const l2 = new FakeBucket({ key: 'test:k', value: 'v2', meta: l2Meta })
-    const cache = new Cacheable({ buckets: [l1, l2], namespace: 'test' })
+    const cache = new Cacheable('test', { buckets: [l1, l2] })
 
     const result = await cache.remember(async () => 'fresh', 'k')
 
@@ -115,7 +115,7 @@ describe('cascade behavior', () => {
   it('Both miss: resource called once; L1 written without meta; L2 written with L1 meta', async () => {
     const l1 = new FakeBucket()
     const l2 = new FakeBucket()
-    const cache = new Cacheable({ buckets: [l1, l2], namespace: 'test' })
+    const cache = new Cacheable('test', { buckets: [l1, l2] })
 
     const before = Date.now()
     let calls = 0
@@ -150,7 +150,7 @@ describe('cascade behavior', () => {
     const l1 = new FakeBucket()
     const l2 = new FakeBucket()
     const l3 = new FakeBucket({ key: 'test:k', value: 'deep', meta: l3Meta })
-    const cache = new Cacheable({ buckets: [l1, l2, l3], namespace: 'test' })
+    const cache = new Cacheable('test', { buckets: [l1, l2, l3] })
 
     const result = await cache.remember(async () => 'fresh', 'k')
 
@@ -174,9 +174,8 @@ describe('cascade behavior', () => {
       value: 'l2-fresh',
       meta: { storedAt: now - 50 },
     })
-    const cache = new Cacheable({
+    const cache = new Cacheable('test', {
       buckets: [l1, l2],
-      namespace: 'test',
       policy: 'max-age',
       maxAge: 100,
     })
@@ -203,9 +202,8 @@ describe('cascade behavior', () => {
       value: 'l2-stale',
       meta: { storedAt: now - 500 },
     })
-    const cache = new Cacheable({
+    const cache = new Cacheable('test', {
       buckets: [l1, l2],
-      namespace: 'test',
       policy: 'max-age',
       maxAge: 100,
     })
@@ -223,7 +221,7 @@ describe('cascade behavior', () => {
   it('delete propagates to all buckets', async () => {
     const l1 = new FakeBucket()
     const l2 = new FakeBucket()
-    const cache = new Cacheable({ buckets: [l1, l2], namespace: 'test' })
+    const cache = new Cacheable('test', { buckets: [l1, l2] })
 
     await cache.remember(async () => 'v', 'k')
     await cache.delete('k')
@@ -235,7 +233,7 @@ describe('cascade behavior', () => {
   it('clear propagates to all buckets', async () => {
     const l1 = new FakeBucket()
     const l2 = new FakeBucket()
-    const cache = new Cacheable({ buckets: [l1, l2], namespace: 'test' })
+    const cache = new Cacheable('test', { buckets: [l1, l2] })
 
     await cache.remember(async () => 'v', 'k')
     await cache.clear()
@@ -251,7 +249,7 @@ describe('cascade behavior', () => {
       value: 'v',
       meta: { storedAt: 999 },
     })
-    const cache = new Cacheable({ buckets: [l1, l2], namespace: 'test' })
+    const cache = new Cacheable('test', { buckets: [l1, l2] })
 
     expect(await cache.meta('k')).toEqual({ storedAt: 999 })
 
@@ -262,7 +260,7 @@ describe('cascade behavior', () => {
 
   it('caches resources that resolve to undefined', async () => {
     const l1 = new FakeBucket()
-    const cache = new Cacheable({ buckets: [l1], namespace: 'test' })
+    const cache = new Cacheable('test', { buckets: [l1] })
 
     let calls = 0
     const resource = async () => {
@@ -293,7 +291,7 @@ describe('cascade behavior', () => {
       return undefined
     }
 
-    const cache = new Cacheable({ buckets: [l1], namespace: 'test' })
+    const cache = new Cacheable('test', { buckets: [l1] })
 
     let calls = 0
     const result = await cache.remember(async () => {
@@ -310,7 +308,7 @@ describe('cascade strict error propagation', () => {
   it('rejects when meta() throws', async () => {
     const l1 = new FakeBucket()
     l1.throwOn.meta = true
-    const cache = new Cacheable({ buckets: [l1], namespace: 'test' })
+    const cache = new Cacheable('test', { buckets: [l1] })
 
     await expect(cache.remember(async () => 'v', 'k')).rejects.toThrow(
       'meta failed',
@@ -324,7 +322,7 @@ describe('cascade strict error propagation', () => {
       meta: { storedAt: Date.now() },
     })
     l1.throwOn.read = true
-    const cache = new Cacheable({ buckets: [l1], namespace: 'test' })
+    const cache = new Cacheable('test', { buckets: [l1] })
 
     await expect(cache.remember(async () => 'fresh', 'k')).rejects.toThrow(
       'read failed',
@@ -334,7 +332,7 @@ describe('cascade strict error propagation', () => {
   it('rejects when write() throws on miss', async () => {
     const l1 = new FakeBucket()
     l1.throwOn.write = true
-    const cache = new Cacheable({ buckets: [l1], namespace: 'test' })
+    const cache = new Cacheable('test', { buckets: [l1] })
 
     await expect(cache.remember(async () => 'fresh', 'k')).rejects.toThrow(
       'write failed',
@@ -344,7 +342,7 @@ describe('cascade strict error propagation', () => {
   it('rejects when delete() throws', async () => {
     const l1 = new FakeBucket()
     l1.throwOn.delete = true
-    const cache = new Cacheable({ buckets: [l1], namespace: 'test' })
+    const cache = new Cacheable('test', { buckets: [l1] })
 
     await expect(cache.delete('k')).rejects.toThrow('delete failed')
   })
@@ -352,7 +350,7 @@ describe('cascade strict error propagation', () => {
   it('rejects when clear() throws', async () => {
     const l1 = new FakeBucket()
     l1.throwOn.clear = true
-    const cache = new Cacheable({ buckets: [l1], namespace: 'test' })
+    const cache = new Cacheable('test', { buckets: [l1] })
 
     await expect(cache.clear()).rejects.toThrow('clear failed')
   })
@@ -363,7 +361,7 @@ describe('concurrent dedup', () => {
 
   it('cache-only: deduplicates concurrent miss callers', async () => {
     const l1 = new FakeBucket()
-    const cache = new Cacheable({ buckets: [l1], namespace: 'test' })
+    const cache = new Cacheable('test', { buckets: [l1] })
 
     let calls = 0
     const slow = async () => {
@@ -381,9 +379,8 @@ describe('concurrent dedup', () => {
 
   it('network-only-non-concurrent: deduplicates concurrent callers', async () => {
     const l1 = new FakeBucket()
-    const cache = new Cacheable({
+    const cache = new Cacheable('test', {
       buckets: [l1],
-      namespace: 'test',
       policy: 'network-only-non-concurrent',
     })
 
@@ -403,9 +400,8 @@ describe('concurrent dedup', () => {
 
   it('max-age: deduplicates concurrent miss callers', async () => {
     const l1 = new FakeBucket()
-    const cache = new Cacheable({
+    const cache = new Cacheable('test', {
       buckets: [l1],
-      namespace: 'test',
       policy: 'max-age',
       maxAge: 1000,
     })
@@ -426,9 +422,8 @@ describe('concurrent dedup', () => {
 
   it('SWR miss: deduplicates concurrent miss callers', async () => {
     const l1 = new FakeBucket()
-    const cache = new Cacheable({
+    const cache = new Cacheable('test', {
       buckets: [l1],
-      namespace: 'test',
       policy: 'stale-while-revalidate',
     })
 
@@ -448,9 +443,8 @@ describe('concurrent dedup', () => {
 
   it('network-only: does NOT deduplicate (control)', async () => {
     const l1 = new FakeBucket()
-    const cache = new Cacheable({
+    const cache = new Cacheable('test', {
       buckets: [l1],
-      namespace: 'test',
       policy: 'network-only',
     })
 

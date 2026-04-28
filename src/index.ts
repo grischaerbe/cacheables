@@ -1,5 +1,5 @@
 //region Types
-export type CacheOptions = {
+type CacheOptionsBase = {
   /**
    * Enables caching
    */
@@ -14,37 +14,47 @@ export type CacheOptions = {
   logTiming?: boolean
 }
 
-type CacheOnlyCachePolicy = {
-  cachePolicy: 'cache-only'
+type CacheOnlyPolicy = {
+  policy?: 'cache-only'
 }
 
-type NetworkOnlyNonConcurrentCachePolicy = {
-  cachePolicy: 'network-only-non-concurrent'
+type NetworkOnlyPolicy = {
+  policy: 'network-only'
 }
 
-type NetworkOnlyCachePolicy = {
-  cachePolicy: 'network-only'
+type NetworkOnlyNonConcurrentPolicy = {
+  policy: 'network-only-non-concurrent'
 }
 
-type MaxAgeCachePolicy = {
-  cachePolicy: 'max-age'
+type MaxAgePolicy = {
+  policy: 'max-age'
   maxAge: number
 }
 
-type SWRCachePolicy = {
-  cachePolicy: 'stale-while-revalidate'
+type SWRPolicy = {
+  policy: 'stale-while-revalidate'
   maxAge?: number
 }
 
+type PolicyOptions =
+  | CacheOnlyPolicy
+  | NetworkOnlyPolicy
+  | NetworkOnlyNonConcurrentPolicy
+  | MaxAgePolicy
+  | SWRPolicy
+
 /**
- * Cacheable options.
+ * Cacheables options. Combines instance settings with the cache policy
+ * (and policy-specific options like `maxAge`).
  */
-export type CacheableOptions =
-  | CacheOnlyCachePolicy
-  | NetworkOnlyCachePolicy
-  | NetworkOnlyNonConcurrentCachePolicy
-  | MaxAgeCachePolicy
-  | SWRCachePolicy
+export type CacheOptions = CacheOptionsBase & PolicyOptions
+
+type Policy =
+  | 'cache-only'
+  | 'network-only'
+  | 'network-only-non-concurrent'
+  | 'max-age'
+  | 'stale-while-revalidate'
 
 //endregion
 
@@ -57,10 +67,19 @@ export class Cacheables {
   log: boolean
   logTiming: boolean
 
+  #policy: Policy
+  #maxAge: number | undefined
+
   constructor(options?: CacheOptions) {
     this.enabled = options?.enabled ?? true
     this.log = options?.log ?? false
     this.logTiming = options?.logTiming ?? false
+    this.#policy = options?.policy ?? 'cache-only'
+    this.#maxAge =
+      options?.policy === 'max-age' ||
+      options?.policy === 'stale-while-revalidate'
+        ? options.maxAge
+        : undefined
   }
 
   #cacheables: Record<string, Cacheable<any>> = {}
@@ -107,24 +126,18 @@ export class Cacheables {
    * that you want to cache for a certain period of time.
    * @param resource A function returning a Promise
    * @param key A key to identify the cache
-   * @param options {CacheableOptions} options
    * @example
-   * const apiResponse = await cache.cacheable(
+   * const apiResponse = await cache.remember(
    *   () => api.query({
    *     query: someQuery,
    *     variables: someVariables,
    *   }),
    *   Cache.key('type', someCacheKey, someOtherCacheKey),
-   *   60000
    * )
    * @returns promise Resolves to the value of the provided resource, either from
    * cache or from the remote resource itself.
    */
-  async cacheable<T>(
-    resource: () => Promise<T>,
-    key: string,
-    options?: CacheableOptions,
-  ): Promise<T> {
+  async remember<T>(resource: () => Promise<T>, key: string): Promise<T> {
     const shouldCache = this.enabled
     if (!shouldCache) {
       if (this.log) Logger.logDisabled()
@@ -136,7 +149,7 @@ export class Cacheables {
     const logId = Logger.getLogId(key)
     if (logTiming) Logger.logTime(logId)
 
-    const result = await this.#cacheable(resource, key, options)
+    const result = await this.#remember(resource, key)
 
     if (logTiming) Logger.logTimeEnd(logId)
     if (log) Logger.logStats(key, this.#cacheables[key])
@@ -144,11 +157,7 @@ export class Cacheables {
     return result
   }
 
-  #cacheable<T>(
-    resource: () => Promise<T>,
-    key: string,
-    options?: CacheableOptions,
-  ): Promise<T> {
+  #remember<T>(resource: () => Promise<T>, key: string): Promise<T> {
     let cacheable = this.#cacheables[key] as Cacheable<T> | undefined
 
     if (!cacheable) {
@@ -156,7 +165,7 @@ export class Cacheables {
       this.#cacheables[key] = cacheable
     }
 
-    return cacheable.touch(resource, options)
+    return cacheable.touch(resource, this.#policy, this.#maxAge)
   }
 }
 //endregion
@@ -203,20 +212,13 @@ class Cacheable<T> {
     return this.#fetch(resource)
   }
 
-  #handlePreInit(
-    resource: () => Promise<T>,
-    options?: CacheableOptions,
-  ): Promise<T> {
-    if (!options) return this.#fetchNonConcurrent(resource)
-    switch (options.cachePolicy) {
-      case 'cache-only':
-        return this.#fetchNonConcurrent(resource)
+  #handlePreInit(resource: () => Promise<T>, policy: Policy): Promise<T> {
+    switch (policy) {
       case 'network-only':
         return this.#fetch(resource)
+      case 'cache-only':
       case 'stale-while-revalidate':
-        return this.#fetchNonConcurrent(resource)
       case 'max-age':
-        return this.#fetchNonConcurrent(resource)
       case 'network-only-non-concurrent':
         return this.#fetchNonConcurrent(resource)
     }
@@ -258,28 +260,24 @@ class Cacheable<T> {
    * Get and set the value of the Cacheable.
    * Some tricky race are conditions going on here,
    * but this should behave as expected
-   * @param resource
-   * @param options {CacheableOptions}
    */
   async touch(
     resource: () => Promise<T>,
-    options?: CacheableOptions,
+    policy: Policy,
+    maxAge: number | undefined,
   ): Promise<T> {
     if (!this.#initialized) {
-      return this.#handlePreInit(resource, options)
+      return this.#handlePreInit(resource, policy)
     }
-    if (!options) {
-      return this.#handleCacheOnly()
-    }
-    switch (options.cachePolicy) {
+    switch (policy) {
       case 'cache-only':
         return this.#handleCacheOnly()
       case 'network-only':
         return this.#handleNetworkOnly(resource)
       case 'stale-while-revalidate':
-        return this.#handleSwr(resource, options.maxAge)
+        return this.#handleSwr(resource, maxAge)
       case 'max-age':
-        return this.#handleMaxAge(resource, options.maxAge)
+        return this.#handleMaxAge(resource, maxAge as number)
       case 'network-only-non-concurrent':
         return this.#handleNetworkOnlyNonConcurrent(resource)
     }

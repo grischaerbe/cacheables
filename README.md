@@ -84,7 +84,6 @@ await getWeather() // hit — cached
 type CacheableOptions<TMeta extends IBaseMeta = IBaseMeta> = {
   buckets: IBucket<TMeta>[]            // REQUIRED, L1 first
   namespace: string                    // REQUIRED — bucket keys become `${namespace}:${key}`
-  enabled?: boolean                    // default: true
   logger?: ILogger                     // default: undefined (no logging)
 } & (
   | { policy?: 'cache-only' }                                // default
@@ -232,7 +231,7 @@ interface ILogger {
 }
 ```
 
-When a `logger` is configured, every `cache.remember(...)` call emits two messages — timing, then hit count — and `enabled: false` short-circuits emit a single `'CACHE: Caching disabled'` message:
+When a `logger` is configured, every `cache.remember(...)` call emits two messages — timing, then hit count:
 
 ```
 Cacheable "weather": 12ms
@@ -312,6 +311,7 @@ Breaking changes:
 - `clear()` returns `Promise<void>` (was `void`). Add `await`.
 - `isCached(key)` returns `Promise<boolean>` (was `boolean`). Add `await`.
 - `keys()` is **removed**. Enumerating heterogeneous async layers (some non-enumerable, like CDNs) doesn't have a single sensible semantic.
+- The `enabled` option is **removed**. If you need to bypass caching, call `resource()` directly instead of `cache.remember()`.
 - `Cacheable` is now generic in `TMeta`. Plain `new Cacheable({ buckets, namespace })` defaults to `Cacheable<IBaseMeta>` and is source-compatible at the type level.
 - New constructor options: `buckets` (required) and `namespace` (required).
 - Any throw from any bucket rejects `remember()`. Previously the in-memory store couldn't fail; this is new strict-error surface for users with custom buckets.

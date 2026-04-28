@@ -7,7 +7,6 @@ import type {
 } from './types'
 
 export class Cacheable<TMeta extends IBaseMeta = IBaseMeta> {
-  enabled: boolean
   logger: ILogger | undefined
 
   #policy: Policy
@@ -23,7 +22,6 @@ export class Cacheable<TMeta extends IBaseMeta = IBaseMeta> {
     }
     this.#buckets = options.buckets
     this.#namespace = options.namespace
-    this.enabled = options.enabled ?? true
     this.logger = options.logger
     this.#policy = options.policy ?? 'cache-only'
     this.#maxAge =
@@ -66,11 +64,6 @@ export class Cacheable<TMeta extends IBaseMeta = IBaseMeta> {
   }
 
   async remember<T>(resource: () => Promise<T>, key: string): Promise<T> {
-    if (!this.enabled) {
-      this.logger?.log('CACHE: Caching disabled')
-      return resource()
-    }
-
     const { logger } = this
     const start = logger ? Date.now() : 0
 

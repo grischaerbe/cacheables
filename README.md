@@ -23,30 +23,30 @@ const cache = new Cacheable({ buckets: [new MemoryBucket()], namespace: 'app' })
 cache.remember(() => fetch('https://some-url.com/api'), 'key')
 ```
 
-* [Installation](#installation)
-* [Usage](#usage)
-* [API](#api)
-  * [new Cacheable(options)](#new-cacheableoptions-cacheabletmeta)
-  * [cache.remember(resource, key)](#cacherememberresource-key-promiset)
-  * [cache.delete(key)](#cachedeletekey-promisevoid)
-  * [cache.clear()](#cacheclear-promisevoid)
-  * [cache.isCached(key)](#cacheiscachedkey-promiseboolean)
-  * [cache.meta(key)](#cachemetakey-promisetmeta--undefined)
-  * [Cacheable.key(...args)](#cacheablekeyargs-string)
-* [Buckets](#buckets)
-  * [`IBucket` contract](#ibucket-contract)
-  * [Built-in `MemoryBucket`](#built-in-memorybucket)
-  * [Writing your own bucket](#writing-your-own-bucket)
-  * [Cascade behavior](#cascade-behavior)
-  * [Typed metadata (`TMeta`)](#typed-metadata-tmeta)
-* [Logger](#logger)
-  * [`ILogger` contract](#ilogger-contract)
-  * [Built-in `ConsoleLogger`](#built-in-consolelogger)
-  * [Writing your own logger](#writing-your-own-logger)
-* [Namespacing](#namespacing)
-* [Cache Policies](#cache-policies)
-* [Migrating from v2 → v3](#migrating-from-v2--v3)
-* [License](#license)
+- [Installation](#installation)
+- [Usage](#usage)
+- [API](#api)
+  - [new Cacheable(options)](#new-cacheableoptions-cacheabletmeta)
+  - [cache.remember(resource, key)](#cacherememberresource-key-promiset)
+  - [cache.delete(key)](#cachedeletekey-promisevoid)
+  - [cache.clear()](#cacheclear-promisevoid)
+  - [cache.isCached(key)](#cacheiscachedkey-promiseboolean)
+  - [cache.meta(key)](#cachemetakey-promisetmeta--undefined)
+  - [Cacheable.key(...args)](#cacheablekeyargs-string)
+- [Buckets](#buckets)
+  - [`IBucket` contract](#ibucket-contract)
+  - [Built-in `MemoryBucket`](#built-in-memorybucket)
+  - [Writing your own bucket](#writing-your-own-bucket)
+  - [Cascade behavior](#cascade-behavior)
+  - [Typed metadata (`TMeta`)](#typed-metadata-tmeta)
+- [Logger](#logger)
+  - [`ILogger` contract](#ilogger-contract)
+  - [Built-in `ConsoleLogger`](#built-in-consolelogger)
+  - [Writing your own logger](#writing-your-own-logger)
+- [Namespacing](#namespacing)
+- [Cache Policies](#cache-policies)
+- [Migrating from v2 → v3](#migrating-from-v2--v3)
+- [License](#license)
 
 ## Installation
 
@@ -82,15 +82,15 @@ await getWeather() // hit — cached
 
 ```ts
 type CacheableOptions<TMeta extends IBaseMeta = IBaseMeta> = {
-  buckets: IBucket<TMeta>[]            // REQUIRED, L1 first
-  namespace: string                    // REQUIRED — bucket keys become `${namespace}:${key}`
-  logger?: ILogger                     // default: undefined (no logging)
+  buckets: IBucket<TMeta>[] // REQUIRED, L1 first
+  namespace: string // REQUIRED — bucket keys become `${namespace}:${key}`
+  logger?: ILogger // default: undefined (no logging)
 } & (
-  | { policy?: 'cache-only' }                                // default
+  | { policy?: 'cache-only' } // default
   | { policy: 'network-only' }
   | { policy: 'network-only-non-concurrent' }
-  | { policy: 'max-age', maxAge: number }
-  | { policy: 'stale-while-revalidate', maxAge?: number }
+  | { policy: 'max-age'; maxAge: number }
+  | { policy: 'stale-while-revalidate'; maxAge?: number }
 )
 ```
 
@@ -171,11 +171,21 @@ Implement `IBucket`. The contract is small enough that filesystem, Redis, Indexe
 import type { IBucket, IBaseMeta } from 'cacheables'
 
 class FileSystemBucket implements IBucket {
-  async read<T>(key: string): Promise<{ value: T } | undefined> { /* … */ }
-  async write<T>(key: string, value: T, meta?: IBaseMeta): Promise<void> { /* … */ }
-  async meta(key: string): Promise<IBaseMeta | undefined> { /* … */ }
-  async delete(key: string): Promise<void> { /* … */ }
-  async clear(): Promise<void> { /* … */ }
+  async read<T>(key: string): Promise<{ value: T } | undefined> {
+    /* … */
+  }
+  async write<T>(key: string, value: T, meta?: IBaseMeta): Promise<void> {
+    /* … */
+  }
+  async meta(key: string): Promise<IBaseMeta | undefined> {
+    /* … */
+  }
+  async delete(key: string): Promise<void> {
+    /* … */
+  }
+  async clear(): Promise<void> {
+    /* … */
+  }
 }
 ```
 
@@ -282,20 +292,25 @@ const tenantA = new Cacheable({ buckets: [bucket], namespace: 'tenant-a' })
 const tenantB = new Cacheable({ buckets: [bucket], namespace: 'tenant-b' })
 ```
 
-Two instances can share a bucket without colliding. `delete` and `isCached` respect the namespace; `clear()` wipes the entire underlying bucket (it has no notion of which keys belong to which namespace), so reach for it only when you really mean *everything*.
+Two instances can share a bucket without colliding. `delete` and `isCached` respect the namespace; `clear()` wipes the entire underlying bucket (it has no notion of which keys belong to which namespace), so reach for it only when you really mean _everything_.
 
 ## Cache Policies
 
-| Policy                          | Behaviour                                                                                                                                                                                                                                                                                              |
-|---------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `cache-only` *(default)*        | Return any cached value; on miss, call `resource()`. Concurrent miss callers share one fetch.                                                                                                                                                                                                          |
-| `network-only`                  | Always call `resource()`; concurrent calls each get their own.                                                                                                                                                                                                                                         |
-| `network-only-non-concurrent`   | Always call `resource()`, but concurrent calls share one in-flight request.                                                                                                                                                                                                                            |
-| `max-age` *(maxAge required)*   | Return cache if `Date.now() - storedAt <= maxAge`, otherwise fetch.                                                                                                                                                                                                                                    |
-| `stale-while-revalidate`        | Return the cached value immediately; if `maxAge` is unset or exceeded, fire a background revalidation.                                                                                                                                                                                                 |
+| Policy                        | Behaviour                                                                                              |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `cache-only` _(default)_      | Return any cached value; on miss, call `resource()`. Concurrent miss callers share one fetch.          |
+| `network-only`                | Always call `resource()`; concurrent calls each get their own.                                         |
+| `network-only-non-concurrent` | Always call `resource()`, but concurrent calls share one in-flight request.                            |
+| `max-age` _(maxAge required)_ | Return cache if `Date.now() - storedAt <= maxAge`, otherwise fetch.                                    |
+| `stale-while-revalidate`      | Return the cached value immediately; if `maxAge` is unset or exceeded, fire a background revalidation. |
 
 ```ts
-new Cacheable({ buckets: [new MemoryBucket()], namespace: 'app', policy: 'max-age', maxAge: 1_000 })
+new Cacheable({
+  buckets: [new MemoryBucket()],
+  namespace: 'app',
+  policy: 'max-age',
+  maxAge: 1_000,
+})
 ```
 
 ## Migrating from v2 → v3

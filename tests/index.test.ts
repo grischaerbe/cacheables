@@ -22,7 +22,10 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 describe('Cache operations', () => {
   it('Returns correct values', async () => {
-    const cache = new Cacheable({ buckets: [new MemoryBucket()], namespace: 'test' })
+    const cache = new Cacheable({
+      buckets: [new MemoryBucket()],
+      namespace: 'test',
+    })
     const value = 10
     const cachedValue = await cache.remember(() => mockedApiRequest(value), 'a')
     expect(await cache.isCached('a')).toEqual(true)
@@ -30,7 +33,10 @@ describe('Cache operations', () => {
   })
 
   it('Stores multiple caches', async () => {
-    const cache = new Cacheable({ buckets: [new MemoryBucket()], namespace: 'test' })
+    const cache = new Cacheable({
+      buckets: [new MemoryBucket()],
+      namespace: 'test',
+    })
 
     const valueA = 10
     const valueB = 20
@@ -50,7 +56,10 @@ describe('Cache operations', () => {
   })
 
   it('Deletes values', async () => {
-    const cache = new Cacheable({ buckets: [new MemoryBucket()], namespace: 'test' })
+    const cache = new Cacheable({
+      buckets: [new MemoryBucket()],
+      namespace: 'test',
+    })
 
     const value = 10
     await cache.remember(() => mockedApiRequest(value), 'a')
@@ -61,7 +70,10 @@ describe('Cache operations', () => {
   })
 
   it('Clears the cache', async () => {
-    const cache = new Cacheable({ buckets: [new MemoryBucket()], namespace: 'test' })
+    const cache = new Cacheable({
+      buckets: [new MemoryBucket()],
+      namespace: 'test',
+    })
 
     const value = 10
     await cache.remember(() => mockedApiRequest(value), 'a')
@@ -175,7 +187,10 @@ describe('Cache operations', () => {
   })
 
   it("Doesn't interfere with error handling", async () => {
-    const cache = new Cacheable({ buckets: [new MemoryBucket()], namespace: 'test' })
+    const cache = new Cacheable({
+      buckets: [new MemoryBucket()],
+      namespace: 'test',
+    })
     const rejecting = () => {
       return cache.remember(() => mockedApiRequest(0, 10, true), 'a')
     }
@@ -183,7 +198,10 @@ describe('Cache operations', () => {
   })
 
   it("Doesn't cache rejected value", async () => {
-    const cache = new Cacheable({ buckets: [new MemoryBucket()], namespace: 'test' })
+    const cache = new Cacheable({
+      buckets: [new MemoryBucket()],
+      namespace: 'test',
+    })
     let errNo = 1
     const rejecting = () => {
       return cache.remember(() => Promise.reject(errNo++), 'a')

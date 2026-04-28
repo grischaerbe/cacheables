@@ -1,28 +1,28 @@
 import { Logger } from './Logger'
 import type {
-  CacheablesOptions,
+  CacheableOptions,
   IBaseMeta,
-  IStorageAdapter,
+  IBucket,
   Policy,
 } from './types'
 
-export class Cacheables<TMeta extends IBaseMeta = IBaseMeta> {
+export class Cacheable<TMeta extends IBaseMeta = IBaseMeta> {
   enabled: boolean
   log: boolean
   logTiming: boolean
 
   #policy: Policy
   #maxAge: number | undefined
-  #adapters: IStorageAdapter<TMeta>[]
+  #buckets: IBucket<TMeta>[]
   #namespace: string
   #inflight = new Map<string, Promise<unknown>>()
   #hits = new Map<string, number>()
 
-  constructor(options: CacheablesOptions<TMeta>) {
-    if (!options.adapters || options.adapters.length === 0) {
-      throw new Error('At least one storage adapter is required')
+  constructor(options: CacheableOptions<TMeta>) {
+    if (!options.buckets || options.buckets.length === 0) {
+      throw new Error('At least one bucket is required')
     }
-    this.#adapters = options.adapters
+    this.#buckets = options.buckets
     this.#namespace = options.namespace
     this.enabled = options.enabled ?? true
     this.log = options.log ?? false
@@ -46,13 +46,13 @@ export class Cacheables<TMeta extends IBaseMeta = IBaseMeta> {
   async delete(key: string): Promise<void> {
     const fullKey = this.#fullKey(key)
     this.#hits.delete(fullKey)
-    await Promise.all(this.#adapters.map((a) => a.delete(fullKey)))
+    await Promise.all(this.#buckets.map((b) => b.delete(fullKey)))
   }
 
   async clear(): Promise<void> {
     this.#inflight.clear()
     this.#hits.clear()
-    await Promise.all(this.#adapters.map((a) => a.clear()))
+    await Promise.all(this.#buckets.map((b) => b.clear()))
   }
 
   async isCached(key: string): Promise<boolean> {
@@ -175,7 +175,7 @@ export class Cacheables<TMeta extends IBaseMeta = IBaseMeta> {
   }
 
   async #cascadeProbe(fullKey: string): Promise<(TMeta | undefined)[]> {
-    return Promise.all(this.#adapters.map((a) => a.meta(fullKey)))
+    return Promise.all(this.#buckets.map((b) => b.meta(fullKey)))
   }
 
   async #cascadeRead<T>(
@@ -188,8 +188,8 @@ export class Cacheables<TMeta extends IBaseMeta = IBaseMeta> {
     )
     if (hitIdx === -1) return undefined
 
-    const adapter = this.#adapters[hitIdx]!
-    const result = await adapter.read<T>(fullKey)
+    const bucket = this.#buckets[hitIdx]!
+    const result = await bucket.read<T>(fullKey)
     if (result === undefined) return undefined
 
     const value = result.value
@@ -206,23 +206,23 @@ export class Cacheables<TMeta extends IBaseMeta = IBaseMeta> {
     hitIdx: number,
   ): Promise<void> {
     const writes: Promise<void>[] = []
-    for (let i = 0; i < this.#adapters.length; i++) {
+    for (let i = 0; i < this.#buckets.length; i++) {
       if (i === hitIdx) continue
       if (probes[i] !== undefined) continue
-      writes.push(this.#adapters[i]!.write(fullKey, value, hitMeta))
+      writes.push(this.#buckets[i]!.write(fullKey, value, hitMeta))
     }
     if (writes.length > 0) await Promise.all(writes)
   }
 
   async #cascadeWrite<T>(fullKey: string, value: T): Promise<void> {
-    const [l1, ...rest] = this.#adapters
+    const [l1, ...rest] = this.#buckets
     if (l1 === undefined) return
     await l1.write(fullKey, value)
     if (rest.length === 0) return
     const meta = await l1.meta(fullKey)
     if (meta === undefined) {
-      throw new Error('L1 adapter did not persist meta after write')
+      throw new Error('L1 bucket did not persist meta after write')
     }
-    await Promise.all(rest.map((a) => a.write(fullKey, value, meta)))
+    await Promise.all(rest.map((b) => b.write(fullKey, value, meta)))
   }
 }

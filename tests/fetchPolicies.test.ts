@@ -1,4 +1,4 @@
-import { Cacheables, MemoryAdapter } from '../src'
+import { Cacheable, MemoryBucket } from '../src'
 
 const mockedApiRequest = <T>(value: T, duration = 0): Promise<T> =>
   new Promise((resolve) => {
@@ -15,8 +15,8 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 describe('Fetch Policies', () => {
   it('cache-only', async () => {
-    const cache = new Cacheables({
-      adapters: [new MemoryAdapter()],
+    const cache = new Cacheable({
+      buckets: [new MemoryBucket()],
       namespace: 'test',
       policy: 'cache-only',
     })
@@ -33,8 +33,8 @@ describe('Fetch Policies', () => {
   })
 
   it('network-only-non-concurrent', async () => {
-    const cache = new Cacheables({
-      adapters: [new MemoryAdapter()],
+    const cache = new Cacheable({
+      buckets: [new MemoryBucket()],
       namespace: 'test',
       policy: 'network-only-non-concurrent',
     })
@@ -58,8 +58,8 @@ describe('Fetch Policies', () => {
     expect(values).toEqual([0, 0, 0, 3])
   })
   it('network-only', async () => {
-    const cache = new Cacheables({
-      adapters: [new MemoryAdapter()],
+    const cache = new Cacheable({
+      buckets: [new MemoryBucket()],
       namespace: 'test',
       policy: 'network-only',
     })
@@ -78,8 +78,8 @@ describe('Fetch Policies', () => {
     expect(values).toEqual([0, 1, 2])
   })
   it('max-age', async () => {
-    const cache = new Cacheables({
-      adapters: [new MemoryAdapter()],
+    const cache = new Cacheable({
+      buckets: [new MemoryBucket()],
       namespace: 'test',
       policy: 'max-age',
       maxAge: 100,
@@ -98,8 +98,8 @@ describe('Fetch Policies', () => {
     expect([a, b, c, d]).toEqual([0, 0, 2, 2])
   })
   it('stale-while-revalidate', async () => {
-    const cache = new Cacheables({
-      adapters: [new MemoryAdapter()],
+    const cache = new Cacheable({
+      buckets: [new MemoryBucket()],
       namespace: 'test',
       policy: 'stale-while-revalidate',
     })
@@ -125,8 +125,8 @@ describe('Fetch Policies', () => {
   })
 
   it('stale-while-revalidate with maxAge', async () => {
-    const cache = new Cacheables({
-      adapters: [new MemoryAdapter()],
+    const cache = new Cacheable({
+      buckets: [new MemoryBucket()],
       namespace: 'test',
       policy: 'stale-while-revalidate',
       maxAge: 200,

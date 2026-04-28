@@ -1,6 +1,6 @@
-import type { IBaseMeta, IStorageAdapter } from '../types'
+import type { IBaseMeta, IBucket } from '../types'
 
-export class MemoryAdapter implements IStorageAdapter<IBaseMeta> {
+export class MemoryBucket implements IBucket<IBaseMeta> {
   #store = new Map<string, { value: unknown; meta: IBaseMeta }>()
 
   async read<T>(key: string): Promise<{ value: T } | undefined> {

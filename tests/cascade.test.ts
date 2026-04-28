@@ -1,5 +1,5 @@
-import { Cacheables } from '../src'
-import type { IBaseMeta, IStorageAdapter } from '../src'
+import { Cacheable } from '../src'
+import type { IBaseMeta, IBucket } from '../src'
 
 interface WriteCall {
   key: string
@@ -7,7 +7,7 @@ interface WriteCall {
   meta: IBaseMeta | undefined
 }
 
-class FakeAdapter implements IStorageAdapter<IBaseMeta> {
+class FakeBucket implements IBucket<IBaseMeta> {
   store = new Map<string, { value: unknown; meta: IBaseMeta }>()
 
   readCalls = 0
@@ -62,9 +62,9 @@ class FakeAdapter implements IStorageAdapter<IBaseMeta> {
 describe('cascade behavior', () => {
   it('L1 hit: does not read L2, probes L2 once, no writes', async () => {
     const seedMeta: IBaseMeta = { storedAt: Date.now() }
-    const l1 = new FakeAdapter({ key: 'test:k', value: 'v', meta: seedMeta })
-    const l2 = new FakeAdapter()
-    const cache = new Cacheables({ adapters: [l1, l2], namespace: 'test' })
+    const l1 = new FakeBucket({ key: 'test:k', value: 'v', meta: seedMeta })
+    const l2 = new FakeBucket()
+    const cache = new Cacheable({ buckets: [l1, l2], namespace: 'test' })
 
     const result = await cache.remember(async () => 'fresh', 'k')
 
@@ -81,13 +81,13 @@ describe('cascade behavior', () => {
 
   it('L1 hit + L2 already has it: no writes anywhere', async () => {
     const seedMeta: IBaseMeta = { storedAt: 1000 }
-    const l1 = new FakeAdapter({ key: 'test:k', value: 'v', meta: seedMeta })
-    const l2 = new FakeAdapter({
+    const l1 = new FakeBucket({ key: 'test:k', value: 'v', meta: seedMeta })
+    const l2 = new FakeBucket({
       key: 'test:k',
       value: 'v',
       meta: { storedAt: 999 },
     })
-    const cache = new Cacheables({ adapters: [l1, l2], namespace: 'test' })
+    const cache = new Cacheable({ buckets: [l1, l2], namespace: 'test' })
 
     await cache.remember(async () => 'fresh', 'k')
 
@@ -97,9 +97,9 @@ describe('cascade behavior', () => {
 
   it('L1 miss + L2 hit: L1 backfilled with L2 meta (storedAt preserved)', async () => {
     const l2Meta: IBaseMeta = { storedAt: 12345 }
-    const l1 = new FakeAdapter()
-    const l2 = new FakeAdapter({ key: 'test:k', value: 'v2', meta: l2Meta })
-    const cache = new Cacheables({ adapters: [l1, l2], namespace: 'test' })
+    const l1 = new FakeBucket()
+    const l2 = new FakeBucket({ key: 'test:k', value: 'v2', meta: l2Meta })
+    const cache = new Cacheable({ buckets: [l1, l2], namespace: 'test' })
 
     const result = await cache.remember(async () => 'fresh', 'k')
 
@@ -113,9 +113,9 @@ describe('cascade behavior', () => {
   })
 
   it('Both miss: resource called once; L1 written without meta; L2 written with L1 meta', async () => {
-    const l1 = new FakeAdapter()
-    const l2 = new FakeAdapter()
-    const cache = new Cacheables({ adapters: [l1, l2], namespace: 'test' })
+    const l1 = new FakeBucket()
+    const l2 = new FakeBucket()
+    const cache = new Cacheable({ buckets: [l1, l2], namespace: 'test' })
 
     const before = Date.now()
     let calls = 0
@@ -147,10 +147,10 @@ describe('cascade behavior', () => {
 
   it('3 layers, L3 hit: L1 and L2 both filled with L3 meta', async () => {
     const l3Meta: IBaseMeta = { storedAt: 42 }
-    const l1 = new FakeAdapter()
-    const l2 = new FakeAdapter()
-    const l3 = new FakeAdapter({ key: 'test:k', value: 'deep', meta: l3Meta })
-    const cache = new Cacheables({ adapters: [l1, l2, l3], namespace: 'test' })
+    const l1 = new FakeBucket()
+    const l2 = new FakeBucket()
+    const l3 = new FakeBucket({ key: 'test:k', value: 'deep', meta: l3Meta })
+    const cache = new Cacheable({ buckets: [l1, l2, l3], namespace: 'test' })
 
     const result = await cache.remember(async () => 'fresh', 'k')
 
@@ -164,18 +164,18 @@ describe('cascade behavior', () => {
 
   it('max-age across layers: stale L1 with fresh L2 returns L2 value', async () => {
     const now = Date.now()
-    const l1 = new FakeAdapter({
+    const l1 = new FakeBucket({
       key: 'test:k',
       value: 'l1-stale',
       meta: { storedAt: now - 500 },
     })
-    const l2 = new FakeAdapter({
+    const l2 = new FakeBucket({
       key: 'test:k',
       value: 'l2-fresh',
       meta: { storedAt: now - 50 },
     })
-    const cache = new Cacheables({
-      adapters: [l1, l2],
+    const cache = new Cacheable({
+      buckets: [l1, l2],
       namespace: 'test',
       policy: 'max-age',
       maxAge: 100,
@@ -193,18 +193,18 @@ describe('cascade behavior', () => {
 
   it('max-age miss across all layers calls resource', async () => {
     const now = Date.now()
-    const l1 = new FakeAdapter({
+    const l1 = new FakeBucket({
       key: 'test:k',
       value: 'l1-stale',
       meta: { storedAt: now - 500 },
     })
-    const l2 = new FakeAdapter({
+    const l2 = new FakeBucket({
       key: 'test:k',
       value: 'l2-stale',
       meta: { storedAt: now - 500 },
     })
-    const cache = new Cacheables({
-      adapters: [l1, l2],
+    const cache = new Cacheable({
+      buckets: [l1, l2],
       namespace: 'test',
       policy: 'max-age',
       maxAge: 100,
@@ -220,10 +220,10 @@ describe('cascade behavior', () => {
     expect(calls).toBe(1)
   })
 
-  it('delete propagates to all adapters', async () => {
-    const l1 = new FakeAdapter()
-    const l2 = new FakeAdapter()
-    const cache = new Cacheables({ adapters: [l1, l2], namespace: 'test' })
+  it('delete propagates to all buckets', async () => {
+    const l1 = new FakeBucket()
+    const l2 = new FakeBucket()
+    const cache = new Cacheable({ buckets: [l1, l2], namespace: 'test' })
 
     await cache.remember(async () => 'v', 'k')
     await cache.delete('k')
@@ -232,10 +232,10 @@ describe('cascade behavior', () => {
     expect(l2.deleteCalls).toEqual(['test:k'])
   })
 
-  it('clear propagates to all adapters', async () => {
-    const l1 = new FakeAdapter()
-    const l2 = new FakeAdapter()
-    const cache = new Cacheables({ adapters: [l1, l2], namespace: 'test' })
+  it('clear propagates to all buckets', async () => {
+    const l1 = new FakeBucket()
+    const l2 = new FakeBucket()
+    const cache = new Cacheable({ buckets: [l1, l2], namespace: 'test' })
 
     await cache.remember(async () => 'v', 'k')
     await cache.clear()
@@ -245,26 +245,26 @@ describe('cascade behavior', () => {
   })
 
   it('isCached returns true if any layer has the key', async () => {
-    const l1 = new FakeAdapter()
-    const l2 = new FakeAdapter({
+    const l1 = new FakeBucket()
+    const l2 = new FakeBucket({
       key: 'test:k',
       value: 'v',
       meta: { storedAt: Date.now() },
     })
-    const cache = new Cacheables({ adapters: [l1, l2], namespace: 'test' })
+    const cache = new Cacheable({ buckets: [l1, l2], namespace: 'test' })
 
     expect(await cache.isCached('k')).toBe(true)
     expect(await cache.isCached('missing')).toBe(false)
   })
 
   it('meta returns highest-priority layer meta', async () => {
-    const l1 = new FakeAdapter()
-    const l2 = new FakeAdapter({
+    const l1 = new FakeBucket()
+    const l2 = new FakeBucket({
       key: 'test:k',
       value: 'v',
       meta: { storedAt: 999 },
     })
-    const cache = new Cacheables({ adapters: [l1, l2], namespace: 'test' })
+    const cache = new Cacheable({ buckets: [l1, l2], namespace: 'test' })
 
     expect(await cache.meta('k')).toEqual({ storedAt: 999 })
 
@@ -274,8 +274,8 @@ describe('cascade behavior', () => {
   })
 
   it('caches resources that resolve to undefined', async () => {
-    const l1 = new FakeAdapter()
-    const cache = new Cacheables({ adapters: [l1], namespace: 'test' })
+    const l1 = new FakeBucket()
+    const cache = new Cacheable({ buckets: [l1], namespace: 'test' })
 
     let calls = 0
     const resource = async () => {
@@ -294,9 +294,9 @@ describe('cascade behavior', () => {
   })
 
   it('treats meta-says-yes / read-says-undefined as a miss', async () => {
-    // Simulates a delete that races between #cascadeProbe and adapter.read:
+    // Simulates a delete that races between #cascadeProbe and bucket.read:
     // meta still reports the entry; read claims absence.
-    const l1 = new FakeAdapter({
+    const l1 = new FakeBucket({
       key: 'test:k',
       value: 'stale',
       meta: { storedAt: Date.now() },
@@ -306,7 +306,7 @@ describe('cascade behavior', () => {
       return undefined
     }
 
-    const cache = new Cacheables({ adapters: [l1], namespace: 'test' })
+    const cache = new Cacheable({ buckets: [l1], namespace: 'test' })
 
     let calls = 0
     const result = await cache.remember(async () => {
@@ -321,9 +321,9 @@ describe('cascade behavior', () => {
 
 describe('cascade strict error propagation', () => {
   it('rejects when meta() throws', async () => {
-    const l1 = new FakeAdapter()
+    const l1 = new FakeBucket()
     l1.throwOn.meta = true
-    const cache = new Cacheables({ adapters: [l1], namespace: 'test' })
+    const cache = new Cacheable({ buckets: [l1], namespace: 'test' })
 
     await expect(cache.remember(async () => 'v', 'k')).rejects.toThrow(
       'meta failed',
@@ -331,13 +331,13 @@ describe('cascade strict error propagation', () => {
   })
 
   it('rejects when read() throws on hit', async () => {
-    const l1 = new FakeAdapter({
+    const l1 = new FakeBucket({
       key: 'test:k',
       value: 'v',
       meta: { storedAt: Date.now() },
     })
     l1.throwOn.read = true
-    const cache = new Cacheables({ adapters: [l1], namespace: 'test' })
+    const cache = new Cacheable({ buckets: [l1], namespace: 'test' })
 
     await expect(cache.remember(async () => 'fresh', 'k')).rejects.toThrow(
       'read failed',
@@ -345,9 +345,9 @@ describe('cascade strict error propagation', () => {
   })
 
   it('rejects when write() throws on miss', async () => {
-    const l1 = new FakeAdapter()
+    const l1 = new FakeBucket()
     l1.throwOn.write = true
-    const cache = new Cacheables({ adapters: [l1], namespace: 'test' })
+    const cache = new Cacheable({ buckets: [l1], namespace: 'test' })
 
     await expect(cache.remember(async () => 'fresh', 'k')).rejects.toThrow(
       'write failed',
@@ -355,17 +355,17 @@ describe('cascade strict error propagation', () => {
   })
 
   it('rejects when delete() throws', async () => {
-    const l1 = new FakeAdapter()
+    const l1 = new FakeBucket()
     l1.throwOn.delete = true
-    const cache = new Cacheables({ adapters: [l1], namespace: 'test' })
+    const cache = new Cacheable({ buckets: [l1], namespace: 'test' })
 
     await expect(cache.delete('k')).rejects.toThrow('delete failed')
   })
 
   it('rejects when clear() throws', async () => {
-    const l1 = new FakeAdapter()
+    const l1 = new FakeBucket()
     l1.throwOn.clear = true
-    const cache = new Cacheables({ adapters: [l1], namespace: 'test' })
+    const cache = new Cacheable({ buckets: [l1], namespace: 'test' })
 
     await expect(cache.clear()).rejects.toThrow('clear failed')
   })
@@ -375,8 +375,8 @@ describe('concurrent dedup', () => {
   const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
   it('cache-only: deduplicates concurrent miss callers', async () => {
-    const l1 = new FakeAdapter()
-    const cache = new Cacheables({ adapters: [l1], namespace: 'test' })
+    const l1 = new FakeBucket()
+    const cache = new Cacheable({ buckets: [l1], namespace: 'test' })
 
     let calls = 0
     const slow = async () => {
@@ -393,9 +393,9 @@ describe('concurrent dedup', () => {
   })
 
   it('network-only-non-concurrent: deduplicates concurrent callers', async () => {
-    const l1 = new FakeAdapter()
-    const cache = new Cacheables({
-      adapters: [l1],
+    const l1 = new FakeBucket()
+    const cache = new Cacheable({
+      buckets: [l1],
       namespace: 'test',
       policy: 'network-only-non-concurrent',
     })
@@ -415,9 +415,9 @@ describe('concurrent dedup', () => {
   })
 
   it('max-age: deduplicates concurrent miss callers', async () => {
-    const l1 = new FakeAdapter()
-    const cache = new Cacheables({
-      adapters: [l1],
+    const l1 = new FakeBucket()
+    const cache = new Cacheable({
+      buckets: [l1],
       namespace: 'test',
       policy: 'max-age',
       maxAge: 1000,
@@ -438,9 +438,9 @@ describe('concurrent dedup', () => {
   })
 
   it('SWR miss: deduplicates concurrent miss callers', async () => {
-    const l1 = new FakeAdapter()
-    const cache = new Cacheables({
-      adapters: [l1],
+    const l1 = new FakeBucket()
+    const cache = new Cacheable({
+      buckets: [l1],
       namespace: 'test',
       policy: 'stale-while-revalidate',
     })
@@ -460,9 +460,9 @@ describe('concurrent dedup', () => {
   })
 
   it('network-only: does NOT deduplicate (control)', async () => {
-    const l1 = new FakeAdapter()
-    const cache = new Cacheables({
-      adapters: [l1],
+    const l1 = new FakeBucket()
+    const cache = new Cacheable({
+      buckets: [l1],
       namespace: 'test',
       policy: 'network-only',
     })

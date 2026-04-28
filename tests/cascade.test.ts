@@ -112,7 +112,7 @@ describe('cascade behavior', () => {
     expect(l2.readCalls).toBe(1)
   })
 
-  it('Both miss: resource called once; L1 written without meta; L2 written with L1 meta', async () => {
+  it('Both miss: resource called once; both layers written with the same engine-minted meta', async () => {
     const l1 = new FakeBucket()
     const l2 = new FakeBucket()
     const cache = new Cacheable('test', { buckets: [l1, l2] })
@@ -130,19 +130,15 @@ describe('cascade behavior', () => {
 
     expect(l1.writeCalls.length).toBe(1)
     expect(l1.writeCalls[0]!.value).toBe('fresh')
-    expect(l1.writeCalls[0]!.meta).toBeUndefined()
+    const l1WriteMeta = l1.writeCalls[0]!.meta!
+    expect(l1WriteMeta).toBeDefined()
+    expect(l1WriteMeta.storedAt).toBeGreaterThanOrEqual(before)
+    expect(l1WriteMeta.storedAt).toBeLessThanOrEqual(after)
 
     expect(l2.writeCalls.length).toBe(1)
     expect(l2.writeCalls[0]!.value).toBe('fresh')
-    const l2Meta = l2.writeCalls[0]!.meta!
-    expect(l2Meta).toBeDefined()
-    expect(l2Meta.storedAt).toBeGreaterThanOrEqual(before)
-    expect(l2Meta.storedAt).toBeLessThanOrEqual(after)
-
-    // L1 stored meta synthesized internally; the meta forwarded to L2 must
-    // match L1's stored meta (storedAt preservation).
-    const l1Meta = await l1.meta('test:k')
-    expect(l1Meta?.storedAt).toBe(l2Meta.storedAt)
+    const l2WriteMeta = l2.writeCalls[0]!.meta!
+    expect(l2WriteMeta.storedAt).toBe(l1WriteMeta.storedAt)
   })
 
   it('3 layers, L3 hit: L1 and L2 both filled with L3 meta', async () => {

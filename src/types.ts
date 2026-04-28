@@ -12,6 +12,11 @@ export interface IBaseMeta {
  * `Cacheable` instance. Reads cascade L1 → Ln; on any hit the engine
  * fills missing layers with the hit value preserving `meta.storedAt`.
  *
+ * Under a `Cacheable`, the engine always supplies `meta` to `write`
+ * (both on cascade write and on backfill), so buckets receive a
+ * consistent `storedAt` across every layer. The no-meta synthesis
+ * branch only matters when a bucket is used standalone.
+ *
  * Contracts:
  * - `meta` MUST be cheap (engine probes it on every layer per read).
  * - `read` returns `undefined` when the entry is absent and `{ value }`

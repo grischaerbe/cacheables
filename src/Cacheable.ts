@@ -208,18 +208,8 @@ export class Cacheable<TMeta extends IBaseMeta = IBaseMeta> {
   }
 
   async #cascadeWrite<T>(fullKey: string, value: T): Promise<TMeta> {
-    const [l1, ...rest] = this.#buckets
-    if (l1 === undefined) {
-      throw new Error('At least one bucket is required')
-    }
-    await l1.write(fullKey, value)
-    const meta = await l1.meta(fullKey)
-    if (meta === undefined) {
-      throw new Error('L1 bucket did not persist meta after write')
-    }
-    if (rest.length > 0) {
-      await Promise.all(rest.map((b) => b.write(fullKey, value, meta)))
-    }
+    const meta = { storedAt: Date.now() } as TMeta
+    await Promise.all(this.#buckets.map((b) => b.write(fullKey, value, meta)))
     return meta
   }
 }

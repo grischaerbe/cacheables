@@ -13,11 +13,6 @@ export class Logger {
     console.timeEnd(key)
   }
 
-  static logDisabled(): void {
-    // eslint-disable-next-line no-console
-    console.log('CACHE: Caching disabled')
-  }
-
   static logStats(key: string, hits: number): void {
     // eslint-disable-next-line no-console
     console.log(`Cacheable "${key}": hits: ${hits}`)

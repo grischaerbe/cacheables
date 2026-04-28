@@ -19,11 +19,7 @@ class FakeViewBucket implements IBucket<UrlView> {
     return entry === undefined ? undefined : { value: entry.value as T }
   }
 
-  async write<T>(
-    key: string,
-    value: T,
-    meta: BucketEntryMeta,
-  ): Promise<void> {
+  async write<T>(key: string, value: T, meta: BucketEntryMeta): Promise<void> {
     this.store.set(key, { value, meta })
   }
 

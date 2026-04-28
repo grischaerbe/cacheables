@@ -18,10 +18,7 @@ class FakeBucket implements IBucket<void> {
   clearCalls = 0
 
   throwOn: Partial<
-    Record<
-      'read' | 'meta' | 'resolve' | 'write' | 'delete' | 'clear',
-      boolean
-    >
+    Record<'read' | 'meta' | 'resolve' | 'write' | 'delete' | 'clear', boolean>
   > = {}
 
   constructor(seed?: { key: string; value: unknown; meta: BucketEntryMeta }) {
@@ -35,11 +32,7 @@ class FakeBucket implements IBucket<void> {
     return entry === undefined ? undefined : { value: entry.value as T }
   }
 
-  async write<T>(
-    key: string,
-    value: T,
-    meta: BucketEntryMeta,
-  ): Promise<void> {
+  async write<T>(key: string, value: T, meta: BucketEntryMeta): Promise<void> {
     this.writeCalls.push({ key, value, meta })
     if (this.throwOn.write) throw new Error('write failed')
     this.store.set(key, { value, meta })

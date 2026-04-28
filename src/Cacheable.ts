@@ -14,7 +14,6 @@ export class Cacheable<TMeta extends IBaseMeta = IBaseMeta> {
   #buckets: IBucket<TMeta>[]
   #namespace: string
   #inflight = new Map<string, Promise<unknown>>()
-  #hits = new Map<string, number>()
 
   constructor(namespace: string, options: CacheableOptions<TMeta>) {
     if (!options.buckets || options.buckets.length === 0) {
@@ -41,13 +40,11 @@ export class Cacheable<TMeta extends IBaseMeta = IBaseMeta> {
 
   async delete(key: string): Promise<void> {
     const fullKey = this.#fullKey(key)
-    this.#hits.delete(fullKey)
     await Promise.all(this.#buckets.map((b) => b.delete(fullKey)))
   }
 
   async clear(): Promise<void> {
     this.#inflight.clear()
-    this.#hits.clear()
     await Promise.all(this.#buckets.map((b) => b.clear()))
   }
 
@@ -59,21 +56,14 @@ export class Cacheable<TMeta extends IBaseMeta = IBaseMeta> {
 
   async remember<T>(resource: () => Promise<T>, key: string): Promise<T> {
     const { logger } = this
-    const start = logger ? Date.now() : 0
+    const start = logger ? performance.now() : 0
 
     const fullKey = this.#fullKey(key)
     const { value, hit } = await this.#runPolicy<T>(resource, fullKey)
 
-    if (hit) {
-      const next = (this.#hits.get(fullKey) ?? 0) + 1
-      this.#hits.set(fullKey, next)
-    } else if (!this.#hits.has(fullKey)) {
-      this.#hits.set(fullKey, 0)
-    }
-
     if (logger) {
-      logger.log(`Cacheable "${key}": ${Date.now() - start}ms`)
-      logger.log(`Cacheable "${key}": hits: ${this.#hits.get(fullKey) ?? 0}`)
+      const elapsed = Math.round((performance.now() - start) * 10) / 10
+      logger.log(`Cacheable "${key}": ${hit ? 'HIT' : 'MISS'} ${elapsed}ms`)
     }
 
     return value

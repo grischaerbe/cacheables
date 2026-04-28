@@ -292,7 +292,7 @@ const [a, b, c] = await Promise.all([
 // Subsequent calls fetch again; this policy never returns the previously cached value.
 ```
 
-Use this policy when you always want fresh data but want to suppress thundering-herd fetches under burst load.
+Use this policy when you always want fresh data but want concurrent callers to share a single fetch.
 
 ### `max-age`
 

@@ -23,7 +23,10 @@ const cache = new Cacheable('app', { buckets: [new MemoryBucket()] })
 
 // First call: misses, calls the resource, writes to every bucket.
 // Subsequent calls: hit, return the cached value without re-fetching.
-const data = await cache.remember(() => fetch('https://some-url.com/api'), 'key')
+const data = await cache.remember(
+  () => fetch('https://some-url.com/api'),
+  'key',
+)
 ```
 
 - [Installation](#installation)
@@ -156,11 +159,21 @@ Implement `IBucket`. The contract is small enough that filesystem, Redis, Indexe
 import type { IBucket, IBaseMeta } from 'cacheables'
 
 class FileSystemBucket implements IBucket {
-  async read<T>(key: string): Promise<{ value: T } | undefined> { /* … */ }
-  async write<T>(key: string, value: T, meta?: IBaseMeta): Promise<void> { /* … */ }
-  async meta(key: string): Promise<IBaseMeta | undefined> { /* … */ }
-  async delete(key: string): Promise<void> { /* … */ }
-  async clear(): Promise<void> { /* … */ }
+  async read<T>(key: string): Promise<{ value: T } | undefined> {
+    /* … */
+  }
+  async write<T>(key: string, value: T, meta?: IBaseMeta): Promise<void> {
+    /* … */
+  }
+  async meta(key: string): Promise<IBaseMeta | undefined> {
+    /* … */
+  }
+  async delete(key: string): Promise<void> {
+    /* … */
+  }
+  async clear(): Promise<void> {
+    /* … */
+  }
 }
 ```
 
@@ -193,7 +206,7 @@ The policy is set once on the constructor and applies to every `remember()` call
 - **Freshness**: whether a cached value qualifies for return without re-fetching. Only `max-age` and `stale-while-revalidate` look at `storedAt`.
 - **In-flight deduplication**: when two callers ask for the same key concurrently, an instance keeps a per-key promise so only one `resource()` runs and both callers receive its result. Dedup is policy-dependent (see each section below).
 
-### `cache-only` *(default)*
+### `cache-only` _(default)_
 
 Returns any cached value, regardless of age. On miss, calls `resource()` once and writes to every bucket. Concurrent miss callers share one in-flight `resource()` call.
 
@@ -286,7 +299,7 @@ const cache = new Cacheable('app', {
 
 ### `stale-while-revalidate`
 
-Returns the cached value immediately when it exists, **even if stale**. If `maxAge` is unset *or* exceeded, fires a background `resource()` call to refresh — the current caller does not wait for it. With no cached value, it behaves like `network-only-non-concurrent` (caller waits, concurrent callers dedup).
+Returns the cached value immediately when it exists, **even if stale**. If `maxAge` is unset _or_ exceeded, fires a background `resource()` call to refresh — the current caller does not wait for it. With no cached value, it behaves like `network-only-non-concurrent` (caller waits, concurrent callers dedup).
 
 ```ts
 const cache = new Cacheable('app', {
@@ -359,7 +372,7 @@ const tenantA = new Cacheable('tenant-a', { buckets: [bucket] })
 const tenantB = new Cacheable('tenant-b', { buckets: [bucket] })
 ```
 
-`delete` and `meta` respect the namespace; `clear()` wipes the entire underlying bucket — it has no notion of which keys belong to which namespace. Reach for `clear()` only when you mean *everything*.
+`delete` and `meta` respect the namespace; `clear()` wipes the entire underlying bucket — it has no notion of which keys belong to which namespace. Reach for `clear()` only when you mean _everything_.
 
 ## Migrating from v2 → v3
 

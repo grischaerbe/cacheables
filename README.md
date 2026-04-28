@@ -42,7 +42,7 @@ cache.remember(() => fetch('https://some-url.com/api'), 'key')
   * [Typed metadata (`TMeta`)](#typed-metadata-tmeta)
 * [Namespacing](#namespacing)
 * [Cache Policies](#cache-policies)
-* [Migrating from v3 → v4](#migrating-from-v3--v4)
+* [Migrating from v2 → v3](#migrating-from-v2--v3)
 * [License](#license)
 
 ## Installation
@@ -117,7 +117,7 @@ Returns the meta from the highest-priority layer that has the key — useful for
 
 ### `Cacheables.key(...args): string`
 
-Joins the parts with `:`. Identical to v3.
+Joins the parts with `:`. Identical to v2.
 
 ```ts
 Cacheables.key('user', 42) // 'user:42'
@@ -242,7 +242,7 @@ Two instances can share an adapter without colliding. `delete` and `isCached` re
 new Cacheables({ adapters: [new MemoryAdapter()], namespace: 'app', policy: 'max-age', maxAge: 1_000 })
 ```
 
-## Migrating from v3 → v4
+## Migrating from v2 → v3
 
 Breaking changes:
 

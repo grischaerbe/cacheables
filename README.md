@@ -300,22 +300,55 @@ new Cacheable({ buckets: [new MemoryBucket()], namespace: 'app', policy: 'max-ag
 
 ## Migrating from v2 → v3
 
+v2 was an in-memory cache with per-call options and a synchronous surface. v3 introduces pluggable storage (buckets), required namespacing, an instance-level cache policy, and a fully async API.
+
+Before / after:
+
+```ts
+// v2
+import { Cacheables } from 'cacheables'
+
+const cache = new Cacheables({ log: true, logTiming: true })
+
+await cache.cacheable(() => fetch(url), 'weather', {
+  cachePolicy: 'max-age',
+  maxAge: 5_000,
+})
+```
+
+```ts
+// v3
+import { Cacheable, MemoryBucket, ConsoleLogger } from 'cacheables'
+
+const cache = new Cacheable({
+  buckets: [new MemoryBucket()],
+  namespace: 'weather',
+  policy: 'max-age',
+  maxAge: 5_000,
+  logger: new ConsoleLogger(),
+})
+
+await cache.remember(() => fetch(url), 'weather')
+```
+
 Breaking changes:
 
-- The class `Cacheables` has been renamed to `Cacheable`. Update imports and `new Cacheables(...)` call sites.
-- The `IStorageAdapter` interface has been renamed to `IBucket`, and `MemoryAdapter` to `MemoryBucket`. The contract is unchanged.
-- `buckets` is now a **required** constructor option (replaces the v2-style implicit memory store). `new Cacheable()` no longer compiles. Pass at least one bucket, e.g. `new Cacheable({ buckets: [new MemoryBucket()], namespace: 'app' })`.
-- The constructor's empty-buckets error message is now `'At least one bucket is required'`.
-- The `CacheablesOptions` type has been renamed to `CacheableOptions`.
-- `delete(key)` returns `Promise<void>` (was `void`). Add `await`.
-- `clear()` returns `Promise<void>` (was `void`). Add `await`.
-- `isCached(key)` returns `Promise<boolean>` (was `boolean`). Add `await`.
-- `keys()` is **removed**. Enumerating heterogeneous async layers (some non-enumerable, like CDNs) doesn't have a single sensible semantic.
-- The `enabled` option is **removed**. If you need to bypass caching, call `resource()` directly instead of `cache.remember()`.
-- `Cacheable` is now generic in `TMeta`. Plain `new Cacheable({ buckets, namespace })` defaults to `Cacheable<IBaseMeta>` and is source-compatible at the type level.
-- New constructor options: `buckets` (required) and `namespace` (required).
-- Any throw from any bucket rejects `remember()`. Previously the in-memory store couldn't fail; this is new strict-error surface for users with custom buckets.
-- The `log` and `logTiming` boolean options have been replaced by a single `logger?: ILogger` option. Pass `new ConsoleLogger()` to restore the previous default-on logging, or implement `ILogger` to route messages elsewhere. Timing now ships as a formatted string (`Cacheable "<key>": <Xms>`) instead of `console.time`/`timeEnd`.
+- **Class renamed** `Cacheables` → `Cacheable`. Update imports and `new Cacheables(...)` call sites. The static helper moves with it: `Cacheables.key(...)` → `Cacheable.key(...)` (behaviour unchanged).
+- **Method renamed** `cache.cacheable(...)` → `cache.remember(...)`.
+- **Cache policy moved to the constructor.** v2 took `cachePolicy` and `maxAge` as a per-call third argument; v3 has no per-call options. Pass `policy` (and `maxAge` where required) once on `new Cacheable({ ... })`. The field is `policy`, not `cachePolicy`. A single instance now serves a single policy — split into multiple instances if you previously mixed policies on one cache.
+- **`buckets` is required** (replaces v2's implicit in-memory store). `new Cacheable()` no longer compiles. `new Cacheable({ buckets: [new MemoryBucket()], namespace: 'app' })` reproduces the v2 default.
+- **`namespace` is required.** Every bucket call sees keys prefixed with `${namespace}:`. Pick one even if only one instance writes to the bucket.
+- **`enabled` option removed.** If you need to bypass the cache, call `resource()` directly instead of `cache.remember(...)`.
+- **`keys()` removed.** Enumerating heterogeneous async layers (some non-enumerable, like CDNs) has no single sensible semantic.
+- **`delete`, `clear`, `isCached` are async.** They now return `Promise<void>` / `Promise<boolean>` — add `await`.
+- **`log` / `logTiming` replaced by `logger`.** Pass `new ConsoleLogger()` to restore the previous default-on logging, or implement `ILogger` to route messages elsewhere. Timing now ships as a formatted string (`Cacheable "<key>": <Xms>`) instead of `console.time` / `timeEnd`.
+- **Options types reshaped.** v2's `CacheOptions` (constructor) and `CacheableOptions` (per-call) are gone. v3's constructor options type is `CacheableOptions` — same name as v2's per-call type, completely different shape (it now carries `buckets`, `namespace`, `policy`, and `logger`).
+- **Buckets can throw.** Any throw from any bucket rejects `remember()`. v2's in-memory store couldn't fail, so this is a new error surface to be aware of once you wire up a custom bucket.
+
+What's new:
+
+- **Multilayer storage.** Pass several buckets to compose tiers (e.g. `[memory, filesystem]`); reads cascade L1 → Ln and back-fill missing layers on every hit.
+- **Typed sidecar metadata.** `Cacheable<TMeta>` is generic; bucket implementations can persist fields like `etag` or `ttl` and `cache.meta(key)` returns them typed. Plain `new Cacheable({ buckets, namespace })` defaults to `Cacheable<IBaseMeta>` and needs no type changes.
 
 ## License
 

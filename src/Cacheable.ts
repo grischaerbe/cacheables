@@ -1,14 +1,13 @@
-import { Logger } from './Logger'
 import type {
   CacheableOptions,
   IBaseMeta,
   IBucket,
+  ILogger,
   Policy,
 } from './types'
 
 export class Cacheable<TMeta extends IBaseMeta = IBaseMeta> {
-  log: boolean
-  logTiming: boolean
+  logger: ILogger | undefined
 
   #policy: Policy
   #maxAge: number | undefined
@@ -23,8 +22,7 @@ export class Cacheable<TMeta extends IBaseMeta = IBaseMeta> {
     }
     this.#buckets = options.buckets
     this.#namespace = options.namespace
-    this.log = options.log ?? false
-    this.logTiming = options.logTiming ?? false
+    this.logger = options.logger
     this.#policy = options.policy ?? 'cache-only'
     this.#maxAge =
       options.policy === 'max-age' ||
@@ -66,9 +64,8 @@ export class Cacheable<TMeta extends IBaseMeta = IBaseMeta> {
   }
 
   async remember<T>(resource: () => Promise<T>, key: string): Promise<T> {
-    const { logTiming, log } = this
-    const logId = Logger.getLogId(key)
-    if (logTiming) Logger.logTime(logId)
+    const { logger } = this
+    const start = logger ? Date.now() : 0
 
     const fullKey = this.#fullKey(key)
     const { value, hit } = await this.#runPolicy<T>(resource, fullKey)
@@ -80,8 +77,10 @@ export class Cacheable<TMeta extends IBaseMeta = IBaseMeta> {
       this.#hits.set(fullKey, 0)
     }
 
-    if (logTiming) Logger.logTimeEnd(logId)
-    if (log) Logger.logStats(key, this.#hits.get(fullKey) ?? 0)
+    if (logger) {
+      logger.log(`Cacheable "${key}": ${Date.now() - start}ms`)
+      logger.log(`Cacheable "${key}": hits: ${this.#hits.get(fullKey) ?? 0}`)
+    }
 
     return value
   }

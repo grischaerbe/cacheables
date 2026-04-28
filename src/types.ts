@@ -35,15 +35,23 @@ export interface IBucket<TMeta extends IBaseMeta = IBaseMeta> {
   clear(): Promise<void>
 }
 
+/**
+ * Logger contract. Implement to route cache messages into your own
+ * logging stack. When a `Cacheable` is constructed with a `logger`,
+ * the engine emits a timing message and a hit-count message on every
+ * `remember()` invocation. When no logger is provided, the engine is
+ * silent.
+ */
+export interface ILogger {
+  log(message: string): void
+}
+
 type CacheOptionsBase = {
   /**
-   * Enable/disable logging of cache hits.
+   * Optional logger. When provided, the engine emits cache messages
+   * via `logger.log(...)`. Omit to keep the engine silent.
    */
-  log?: boolean
-  /**
-   * Enable/disable timings.
-   */
-  logTiming?: boolean
+  logger?: ILogger
 }
 
 type CacheOnlyPolicy = {

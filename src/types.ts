@@ -98,13 +98,13 @@ export type CacheOptions = CacheOptionsBase & PolicyOptions
 /**
  * Constructor options for `Cacheable<TMeta>`.
  *
- * `buckets` is required; the array is L1 first. `namespace`, when
- * supplied, is prefixed onto every key passed to buckets as
- * `${namespace}:${key}`.
+ * `buckets` is required; the array is L1 first. `namespace` is
+ * required and is prefixed onto every key passed to buckets as
+ * `${namespace}:${key}`, isolating instances that share a bucket.
  */
 export type CacheableOptions<TMeta extends IBaseMeta = IBaseMeta> =
   CacheOptionsBase &
     PolicyOptions & {
       buckets: IBucket<TMeta>[]
-      namespace?: string
+      namespace: string
     }

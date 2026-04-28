@@ -50,11 +50,4 @@ describe('namespace', () => {
     expect(await a.isCached('k')).toBe(false)
     expect(await b.isCached('k')).toBe(false)
   })
-
-  it('omitting namespace stores keys verbatim', async () => {
-    const bucket = new MemoryBucket()
-    const cache = new Cacheable({ buckets: [bucket] })
-    await cache.remember(async () => 'v', 'k')
-    expect(await bucket.read('k')).toEqual({ value: 'v' })
-  })
 })

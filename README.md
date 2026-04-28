@@ -11,14 +11,14 @@ A small, typed cache with composable storage buckets and a handful of cache poli
 - **Fully typed results**, including a generic `TMeta` parameter for sidecar metadata.
 - Supports different **cache policies**.
 - Helper to build cache keys.
-- Optional **namespace** prefix so multiple instances can share a bucket without collisions.
+- Required **namespace** prefix so multiple instances can share a bucket without collisions.
 - Works in the browser and Node.js.
 - **No dependencies**.
 
 ```ts
 import { Cacheable, MemoryBucket } from 'cacheables'
 
-const cache = new Cacheable({ buckets: [new MemoryBucket()] })
+const cache = new Cacheable({ buckets: [new MemoryBucket()], namespace: 'app' })
 
 cache.remember(() => fetch('https://some-url.com/api'), 'key')
 ```
@@ -41,7 +41,7 @@ cache.remember(() => fetch('https://some-url.com/api'), 'key')
   * [Typed metadata (`TMeta`)](#typed-metadata-tmeta)
 * [Namespacing](#namespacing)
 * [Cache Policies](#cache-policies)
-* [Migrating from v3 → v4](#migrating-from-v3--v4)
+* [Migrating from v2 → v3](#migrating-from-v2--v3)
 * [License](#license)
 
 ## Installation
@@ -59,6 +59,7 @@ const apiUrl = 'https://goweather.herokuapp.com/weather/Karlsruhe'
 
 const cache = new Cacheable({
   buckets: [new MemoryBucket()],
+  namespace: 'weather',
   policy: 'max-age',
   maxAge: 5_000,
 })
@@ -78,7 +79,7 @@ await getWeather() // hit — cached
 ```ts
 type CacheableOptions<TMeta extends IBaseMeta = IBaseMeta> = {
   buckets: IBucket<TMeta>[]            // REQUIRED, L1 first
-  namespace?: string                   // bucket keys become `${namespace}:${key}`
+  namespace: string                    // REQUIRED — bucket keys become `${namespace}:${key}`
   enabled?: boolean                    // default: true
   log?: boolean                        // default: false
   logTiming?: boolean                  // default: false
@@ -115,7 +116,7 @@ Returns the meta from the highest-priority layer that has the key — useful for
 
 ### `Cacheable.key(...args): string`
 
-Joins the parts with `:`. Identical to v3.
+Joins the parts with `:`. Identical to v2.
 
 ```ts
 Cacheable.key('user', 42) // 'user:42'
@@ -157,7 +158,7 @@ Ships with the package; covers the common in-memory use case.
 ```ts
 import { Cacheable, MemoryBucket } from 'cacheables'
 
-const cache = new Cacheable({ buckets: [new MemoryBucket()] })
+const cache = new Cacheable({ buckets: [new MemoryBucket()], namespace: 'app' })
 ```
 
 ### Writing your own bucket
@@ -181,6 +182,7 @@ class FileSystemBucket implements IBucket {
 ```ts
 const cache = new Cacheable({
   buckets: [new MemoryBucket(), new FileSystemBucket()],
+  namespace: 'app',
   policy: 'max-age',
   maxAge: 60_000,
 })
@@ -207,6 +209,7 @@ class ETagBucket implements IBucket<ETagMeta> {
 
 const cache = new Cacheable<ETagMeta>({
   buckets: [new ETagBucket()],
+  namespace: 'app',
 })
 
 const meta = await cache.meta('user:42') // typed as ETagMeta | undefined
@@ -216,7 +219,7 @@ Every bucket passed to the constructor must satisfy `IBucket<ETagMeta>`, and the
 
 ## Namespacing
 
-Set `namespace` and every bucket call sees keys prefixed with `${namespace}:`:
+`namespace` is required: every bucket call sees keys prefixed with `${namespace}:`. This isolates instances that share the same bucket, so you must pick a namespace at construction time even when only one instance uses a bucket.
 
 ```ts
 const bucket = new MemoryBucket()
@@ -237,24 +240,24 @@ Two instances can share a bucket without colliding. `delete` and `isCached` resp
 | `stale-while-revalidate`        | Return the cached value immediately; if `maxAge` is unset or exceeded, fire a background revalidation.                                                                                                                                                                                                 |
 
 ```ts
-new Cacheable({ buckets: [new MemoryBucket()], policy: 'max-age', maxAge: 1_000 })
+new Cacheable({ buckets: [new MemoryBucket()], namespace: 'app', policy: 'max-age', maxAge: 1_000 })
 ```
 
-## Migrating from v3 → v4
+## Migrating from v2 → v3
 
 Breaking changes:
 
 - The class `Cacheables` has been renamed to `Cacheable`. Update imports and `new Cacheables(...)` call sites.
 - The `IStorageAdapter` interface has been renamed to `IBucket`, and `MemoryAdapter` to `MemoryBucket`. The contract is unchanged.
-- `buckets` is now a **required** constructor option (replaces the v3-style implicit memory store, and renamed from `adapters`). `new Cacheable()` no longer compiles. Pass at least one bucket, e.g. `new Cacheable({ buckets: [new MemoryBucket()] })`.
-- The constructor's empty-buckets error message is now `'At least one bucket is required'` (was `'At least one storage adapter is required'`).
+- `buckets` is now a **required** constructor option (replaces the v2-style implicit memory store). `new Cacheable()` no longer compiles. Pass at least one bucket, e.g. `new Cacheable({ buckets: [new MemoryBucket()], namespace: 'app' })`.
+- The constructor's empty-buckets error message is now `'At least one bucket is required'`.
 - The `CacheablesOptions` type has been renamed to `CacheableOptions`.
 - `delete(key)` returns `Promise<void>` (was `void`). Add `await`.
 - `clear()` returns `Promise<void>` (was `void`). Add `await`.
 - `isCached(key)` returns `Promise<boolean>` (was `boolean`). Add `await`.
 - `keys()` is **removed**. Enumerating heterogeneous async layers (some non-enumerable, like CDNs) doesn't have a single sensible semantic.
-- `Cacheable` is now generic in `TMeta`. Plain `new Cacheable({ buckets })` defaults to `Cacheable<IBaseMeta>` and is source-compatible at the type level.
-- New constructor options: `buckets` (required) and `namespace` (optional).
+- `Cacheable` is now generic in `TMeta`. Plain `new Cacheable({ buckets, namespace })` defaults to `Cacheable<IBaseMeta>` and is source-compatible at the type level.
+- New constructor options: `buckets` (required) and `namespace` (required).
 - Any throw from any bucket rejects `remember()`. Previously the in-memory store couldn't fail; this is new strict-error surface for users with custom buckets.
 
 ## License

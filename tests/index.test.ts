@@ -22,7 +22,7 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 describe('Cache operations', () => {
   it('Returns correct values', async () => {
-    const cache = new Cacheable({ buckets: [new MemoryBucket()] })
+    const cache = new Cacheable({ buckets: [new MemoryBucket()], namespace: 'test' })
     const value = 10
     const cachedValue = await cache.remember(() => mockedApiRequest(value), 'a')
     expect(await cache.isCached('a')).toEqual(true)
@@ -30,7 +30,7 @@ describe('Cache operations', () => {
   })
 
   it('Stores multiple caches', async () => {
-    const cache = new Cacheable({ buckets: [new MemoryBucket()] })
+    const cache = new Cacheable({ buckets: [new MemoryBucket()], namespace: 'test' })
 
     const valueA = 10
     const valueB = 20
@@ -50,7 +50,7 @@ describe('Cache operations', () => {
   })
 
   it('Deletes values', async () => {
-    const cache = new Cacheable({ buckets: [new MemoryBucket()] })
+    const cache = new Cacheable({ buckets: [new MemoryBucket()], namespace: 'test' })
 
     const value = 10
     await cache.remember(() => mockedApiRequest(value), 'a')
@@ -61,7 +61,7 @@ describe('Cache operations', () => {
   })
 
   it('Clears the cache', async () => {
-    const cache = new Cacheable({ buckets: [new MemoryBucket()] })
+    const cache = new Cacheable({ buckets: [new MemoryBucket()], namespace: 'test' })
 
     const value = 10
     await cache.remember(() => mockedApiRequest(value), 'a')
@@ -79,6 +79,7 @@ describe('Cache operations', () => {
   it('Returns correctly if disabled', async () => {
     const cache = new Cacheable({
       buckets: [new MemoryBucket()],
+      namespace: 'test',
       enabled: false,
     })
 
@@ -96,6 +97,7 @@ describe('Cache operations', () => {
 
     const cache = new Cacheable({
       buckets: [new MemoryBucket()],
+      namespace: 'test',
       log: true,
       enabled: false,
     })
@@ -117,7 +119,7 @@ describe('Cache operations', () => {
   })
 
   it('Throws when constructed without buckets', () => {
-    expect(() => new Cacheable({ buckets: [] })).toThrow(
+    expect(() => new Cacheable({ buckets: [], namespace: 'test' })).toThrow(
       'At least one bucket is required',
     )
   })
@@ -132,6 +134,7 @@ describe('Cache operations', () => {
   it('Handles race conditions correctly', async () => {
     const cache = new Cacheable({
       buckets: [new MemoryBucket()],
+      namespace: 'test',
       policy: 'max-age',
       maxAge: 100,
     })
@@ -161,6 +164,7 @@ describe('Cache operations', () => {
 
     const cache = new Cacheable({
       buckets: [new MemoryBucket()],
+      namespace: 'test',
       log: true,
       policy: 'max-age',
       maxAge: 100,
@@ -192,7 +196,7 @@ describe('Cache operations', () => {
   })
 
   it("Doesn't interfere with error handling", async () => {
-    const cache = new Cacheable({ buckets: [new MemoryBucket()] })
+    const cache = new Cacheable({ buckets: [new MemoryBucket()], namespace: 'test' })
     const rejecting = () => {
       return cache.remember(() => mockedApiRequest(0, 10, true), 'a')
     }
@@ -200,7 +204,7 @@ describe('Cache operations', () => {
   })
 
   it("Doesn't cache rejected value", async () => {
-    const cache = new Cacheable({ buckets: [new MemoryBucket()] })
+    const cache = new Cacheable({ buckets: [new MemoryBucket()], namespace: 'test' })
     let errNo = 1
     const rejecting = () => {
       return cache.remember(() => Promise.reject(errNo++), 'a')

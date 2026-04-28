@@ -237,11 +237,11 @@ interface ILogger {
 }
 ```
 
-When a `logger` is configured, every `cache.remember(...)` call emits two messages — timing, then hit count:
+When a `logger` is configured, every `cache.remember(...)` call emits one message tagged `HIT` or `MISS` with the elapsed time:
 
 ```
-Cacheable "weather": 12ms
-Cacheable "weather": hits: 1
+Cacheable "weather": MISS 12ms
+Cacheable "weather": HIT 0.2ms
 ```
 
 ### Built-in `ConsoleLogger`
@@ -349,7 +349,7 @@ Breaking changes:
 - **`keys()` removed.** Enumerating heterogeneous async layers (some non-enumerable, like CDNs) has no single sensible semantic.
 - **`delete` and `clear` are async.** They now return `Promise<void>` — add `await`.
 - **`isCached` removed.** Use `cache.meta(key)` instead — it returns `undefined` when the key is absent and the meta object otherwise.
-- **`log` / `logTiming` replaced by `logger`.** Pass `new ConsoleLogger()` to restore the previous default-on logging, or implement `ILogger` to route messages elsewhere. Timing now ships as a formatted string (`Cacheable "<key>": <Xms>`) instead of `console.time` / `timeEnd`.
+- **`log` / `logTiming` replaced by `logger`.** Pass `new ConsoleLogger()` to restore the previous default-on logging, or implement `ILogger` to route messages elsewhere. Each `remember()` call emits a single formatted message (`Cacheable "<key>": HIT|MISS <Xms>`) instead of `console.time` / `timeEnd`.
 - **Options types reshaped.** v2's `CacheOptions` (constructor) and `CacheableOptions` (per-call) are gone. v3's constructor options type is `CacheableOptions` — same name as v2's per-call type, completely different shape (it now carries `buckets`, `policy`, and `logger`; `namespace` is the constructor's first positional argument).
 - **Buckets can throw.** Any throw from any bucket rejects `remember()`. v2's in-memory store couldn't fail, so this is a new error surface to be aware of once you wire up a custom bucket.
 

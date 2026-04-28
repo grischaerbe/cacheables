@@ -95,13 +95,19 @@ describe('Cache operations', () => {
     const cachedRequest = () => cache.remember(() => mockedApiRequest(1), 'a')
 
     await cachedRequest()
-    expect(console.log).lastCalledWith('Cacheable "a": hits: 0')
+    expect(console.log).lastCalledWith(
+      expect.stringMatching(/^Cacheable "a": MISS \d+(\.\d+)?ms$/),
+    )
 
     await cachedRequest()
-    expect(console.log).lastCalledWith('Cacheable "a": hits: 1')
+    expect(console.log).lastCalledWith(
+      expect.stringMatching(/^Cacheable "a": HIT \d+(\.\d+)?ms$/),
+    )
 
     await cachedRequest()
-    expect(console.log).lastCalledWith('Cacheable "a": hits: 2')
+    expect(console.log).lastCalledWith(
+      expect.stringMatching(/^Cacheable "a": HIT \d+(\.\d+)?ms$/),
+    )
   })
 
   it('Throws when constructed without buckets', () => {
@@ -160,23 +166,31 @@ describe('Cache operations', () => {
 
     // This should be a miss and take ~10ms
     await hitCache()
-    expect(console.log).lastCalledWith('Cacheable "a": hits: 0')
+    expect(console.log).lastCalledWith(
+      expect.stringMatching(/^Cacheable "a": MISS \d+(\.\d+)?ms$/),
+    )
 
     // This should be a hit and take ~0ms
     await hitCache()
-    expect(console.log).lastCalledWith('Cacheable "a": hits: 1')
+    expect(console.log).lastCalledWith(
+      expect.stringMatching(/^Cacheable "a": HIT \d+(\.\d+)?ms$/),
+    )
 
     await wait(60)
 
     // This should be a hit and take ~0ms
     await hitCache()
-    expect(console.log).lastCalledWith('Cacheable "a": hits: 2')
+    expect(console.log).lastCalledWith(
+      expect.stringMatching(/^Cacheable "a": HIT \d+(\.\d+)?ms$/),
+    )
 
     await wait(60)
 
     // This should be a miss and take ~10ms
     await hitCache()
-    expect(console.log).lastCalledWith('Cacheable "a": hits: 2')
+    expect(console.log).lastCalledWith(
+      expect.stringMatching(/^Cacheable "a": MISS \d+(\.\d+)?ms$/),
+    )
   })
 
   it("Doesn't interfere with error handling", async () => {

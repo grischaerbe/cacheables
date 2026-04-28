@@ -98,13 +98,13 @@ export type CacheOptions = CacheOptionsBase & PolicyOptions
 /**
  * Constructor options for `Cacheables<TMeta>`.
  *
- * `adapters` is required; the array is L1 first. `namespace`, when
- * supplied, is prefixed onto every key passed to adapters as
- * `${namespace}:${key}`.
+ * `adapters` is required; the array is L1 first. `namespace` is
+ * required and is prefixed onto every key passed to adapters as
+ * `${namespace}:${key}`, isolating instances that share an adapter.
  */
 export type CacheablesOptions<TMeta extends IBaseMeta = IBaseMeta> =
   CacheOptionsBase &
     PolicyOptions & {
       adapters: IStorageAdapter<TMeta>[]
-      namespace?: string
+      namespace: string
     }

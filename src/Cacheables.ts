@@ -14,7 +14,7 @@ export class Cacheables<TMeta extends IBaseMeta = IBaseMeta> {
   #policy: Policy
   #maxAge: number | undefined
   #adapters: IStorageAdapter<TMeta>[]
-  #namespace: string | undefined
+  #namespace: string
   #inflight = new Map<string, Promise<unknown>>()
   #hits = new Map<string, number>()
 
@@ -40,7 +40,7 @@ export class Cacheables<TMeta extends IBaseMeta = IBaseMeta> {
   }
 
   #fullKey(key: string): string {
-    return this.#namespace === undefined ? key : `${this.#namespace}:${key}`
+    return `${this.#namespace}:${key}`
   }
 
   async delete(key: string): Promise<void> {

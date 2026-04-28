@@ -17,6 +17,7 @@ describe('Fetch Policies', () => {
   it('cache-only', async () => {
     const cache = new Cacheables({
       adapters: [new MemoryAdapter()],
+      namespace: 'test',
       policy: 'cache-only',
     })
 
@@ -34,6 +35,7 @@ describe('Fetch Policies', () => {
   it('network-only-non-concurrent', async () => {
     const cache = new Cacheables({
       adapters: [new MemoryAdapter()],
+      namespace: 'test',
       policy: 'network-only-non-concurrent',
     })
 
@@ -58,6 +60,7 @@ describe('Fetch Policies', () => {
   it('network-only', async () => {
     const cache = new Cacheables({
       adapters: [new MemoryAdapter()],
+      namespace: 'test',
       policy: 'network-only',
     })
 
@@ -77,6 +80,7 @@ describe('Fetch Policies', () => {
   it('max-age', async () => {
     const cache = new Cacheables({
       adapters: [new MemoryAdapter()],
+      namespace: 'test',
       policy: 'max-age',
       maxAge: 100,
     })
@@ -96,6 +100,7 @@ describe('Fetch Policies', () => {
   it('stale-while-revalidate', async () => {
     const cache = new Cacheables({
       adapters: [new MemoryAdapter()],
+      namespace: 'test',
       policy: 'stale-while-revalidate',
     })
 
@@ -122,6 +127,7 @@ describe('Fetch Policies', () => {
   it('stale-while-revalidate with maxAge', async () => {
     const cache = new Cacheables({
       adapters: [new MemoryAdapter()],
+      namespace: 'test',
       policy: 'stale-while-revalidate',
       maxAge: 200,
     })

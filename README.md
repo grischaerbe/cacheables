@@ -11,14 +11,14 @@ A small, typed cache with composable storage adapters and a handful of cache pol
 - **Fully typed results**, including a generic `TMeta` parameter for sidecar metadata.
 - Supports different **cache policies**.
 - Helper to build cache keys.
-- Optional **namespace** prefix so multiple instances can share an adapter without collisions.
+- Required **namespace** prefix so multiple instances can share an adapter without collisions.
 - Works in the browser and Node.js.
 - **No dependencies**.
 
 ```ts
 import { Cacheables, MemoryAdapter } from 'cacheables'
 
-const cache = new Cacheables({ adapters: [new MemoryAdapter()] })
+const cache = new Cacheables({ adapters: [new MemoryAdapter()], namespace: 'app' })
 
 cache.remember(() => fetch('https://some-url.com/api'), 'key')
 ```
@@ -60,6 +60,7 @@ const apiUrl = 'https://goweather.herokuapp.com/weather/Karlsruhe'
 
 const cache = new Cacheables({
   adapters: [new MemoryAdapter()],
+  namespace: 'weather',
   policy: 'max-age',
   maxAge: 5_000,
 })
@@ -79,7 +80,7 @@ await getWeather() // hit — cached
 ```ts
 type CacheablesOptions<TMeta extends IBaseMeta = IBaseMeta> = {
   adapters: IStorageAdapter<TMeta>[]   // REQUIRED, L1 first
-  namespace?: string                   // adapter keys become `${namespace}:${key}`
+  namespace: string                    // REQUIRED — adapter keys become `${namespace}:${key}`
   enabled?: boolean                    // default: true
   log?: boolean                        // default: false
   logTiming?: boolean                  // default: false
@@ -156,7 +157,7 @@ Ships with the package; covers the common in-memory use case.
 ```ts
 import { Cacheables, MemoryAdapter } from 'cacheables'
 
-const cache = new Cacheables({ adapters: [new MemoryAdapter()] })
+const cache = new Cacheables({ adapters: [new MemoryAdapter()], namespace: 'app' })
 ```
 
 ### Writing your own adapter
@@ -180,6 +181,7 @@ class FileSystemAdapter implements IStorageAdapter {
 ```ts
 const cache = new Cacheables({
   adapters: [new MemoryAdapter(), new FileSystemAdapter()],
+  namespace: 'app',
   policy: 'max-age',
   maxAge: 60_000,
 })
@@ -206,6 +208,7 @@ class ETagAdapter implements IStorageAdapter<ETagMeta> {
 
 const cache = new Cacheables<ETagMeta>({
   adapters: [new ETagAdapter()],
+  namespace: 'app',
 })
 
 const meta = await cache.meta('user:42') // typed as ETagMeta | undefined
@@ -215,7 +218,7 @@ Every adapter passed to the constructor must satisfy `IStorageAdapter<ETagMeta>`
 
 ## Namespacing
 
-Set `namespace` and every adapter call sees keys prefixed with `${namespace}:`:
+`namespace` is required: every adapter call sees keys prefixed with `${namespace}:`. This isolates instances that share the same adapter, so you must pick a namespace at construction time even when only one instance uses an adapter.
 
 ```ts
 const adapter = new MemoryAdapter()
@@ -236,20 +239,20 @@ Two instances can share an adapter without colliding. `delete` and `isCached` re
 | `stale-while-revalidate`        | Return the cached value immediately; if `maxAge` is unset or exceeded, fire a background revalidation.                                                                                                                                                                                                 |
 
 ```ts
-new Cacheables({ adapters: [new MemoryAdapter()], policy: 'max-age', maxAge: 1_000 })
+new Cacheables({ adapters: [new MemoryAdapter()], namespace: 'app', policy: 'max-age', maxAge: 1_000 })
 ```
 
 ## Migrating from v3 → v4
 
 Breaking changes:
 
-- `adapters` is now a **required** constructor option. `new Cacheables()` no longer compiles. Pass at least one adapter, e.g. `new Cacheables({ adapters: [new MemoryAdapter()] })`.
+- `adapters` is now a **required** constructor option. `new Cacheables()` no longer compiles. Pass at least one adapter, e.g. `new Cacheables({ adapters: [new MemoryAdapter()], namespace: 'app' })`.
 - `delete(key)` returns `Promise<void>` (was `void`). Add `await`.
 - `clear()` returns `Promise<void>` (was `void`). Add `await`.
 - `isCached(key)` returns `Promise<boolean>` (was `boolean`). Add `await`.
 - `keys()` is **removed**. Enumerating heterogeneous async layers (some non-enumerable, like CDNs) doesn't have a single sensible semantic.
-- `Cacheables` is now generic in `TMeta`. Plain `new Cacheables({ adapters })` defaults to `Cacheables<IBaseMeta>` and is source-compatible at the type level.
-- New constructor options: `adapters` (required) and `namespace` (optional).
+- `Cacheables` is now generic in `TMeta`. Plain `new Cacheables({ adapters, namespace })` defaults to `Cacheables<IBaseMeta>` and is source-compatible at the type level.
+- New constructor options: `adapters` (required) and `namespace` (required).
 - Any throw from any adapter rejects `remember()`. Previously the in-memory store couldn't fail; this is new strict-error surface for users with custom adapters.
 
 ## License

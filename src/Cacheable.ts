@@ -51,12 +51,6 @@ export class Cacheable<TMeta extends IBaseMeta = IBaseMeta> {
     await Promise.all(this.#buckets.map((b) => b.clear()))
   }
 
-  async isCached(key: string): Promise<boolean> {
-    const fullKey = this.#fullKey(key)
-    const probes = await this.#cascadeProbe(fullKey)
-    return probes.some((m) => m !== undefined)
-  }
-
   async meta(key: string): Promise<TMeta | undefined> {
     const fullKey = this.#fullKey(key)
     const probes = await this.#cascadeProbe(fullKey)

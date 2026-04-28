@@ -33,8 +33,8 @@ describe('namespace', () => {
 
     await a.delete('k')
 
-    expect(await a.isCached('k')).toBe(false)
-    expect(await b.isCached('k')).toBe(true)
+    expect(await a.meta('k')).toBeUndefined()
+    expect(await b.meta('k')).toBeDefined()
   })
 
   it('clear from one namespace wipes shared bucket (documented caveat)', async () => {
@@ -47,7 +47,7 @@ describe('namespace', () => {
 
     await a.clear()
 
-    expect(await a.isCached('k')).toBe(false)
-    expect(await b.isCached('k')).toBe(false)
+    expect(await a.meta('k')).toBeUndefined()
+    expect(await b.meta('k')).toBeUndefined()
   })
 })

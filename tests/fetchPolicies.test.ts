@@ -90,7 +90,8 @@ describe('Fetch Policies', () => {
     const a = await ma(0)
     const b = await ma(1)
 
-    await wait(100)
+    // Wait well past maxAge so the staleness check isn't on the boundary.
+    await wait(300)
 
     const c = await ma(2)
     const d = await ma(3)
@@ -134,22 +135,23 @@ describe('Fetch Policies', () => {
 
     const swr = (v: any) => cache.remember(() => mockedApiRequest(v, 50), 'key')
 
-    // Preheat cache, takes ~50ms
+    // Preheat cache, fetcher takes ~50ms.
     await swr(0)
 
-    await wait(100)
-
-    // ~150ms on the clock, maxAge not reached
+    // Still well within maxAge.
+    await wait(50)
     const a = await swr(1)
 
-    await wait(100)
+    // Wait clearly past maxAge so the entry is unambiguously stale.
+    await wait(400)
 
-    // ~250ms on the clock, maxAge reached, cache updates silently
+    // Stale read: returns the cached value and kicks off a background refetch.
     const b = await swr(2)
 
-    await wait(100)
+    // Give the background refetch (~50ms) plenty of time to land.
+    await wait(150)
 
-    // ~350ms on the clock, cache should be updated silently with value `2`
+    // Cache has been silently updated to 2 and is fresh again.
     const c = await swr(3)
 
     expect([a, b, c]).toEqual([0, 0, 2])

@@ -1,8 +1,8 @@
-export { Cacheables } from './Cacheables'
-export { MemoryAdapter } from './adapters/MemoryAdapter'
+export { Cacheable } from './Cacheable'
+export { MemoryBucket } from './buckets/MemoryBucket'
 export type {
   CacheOptions,
-  CacheablesOptions,
+  CacheableOptions,
   IBaseMeta,
-  IStorageAdapter,
+  IBucket,
 } from './types'

@@ -1,4 +1,4 @@
-import { Cacheables, MemoryAdapter } from '../src'
+import { Cacheable, MemoryBucket } from '../src'
 
 const errorMessage = 'This is an error message.'
 
@@ -22,7 +22,7 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 describe('Cache operations', () => {
   it('Returns correct values', async () => {
-    const cache = new Cacheables({ adapters: [new MemoryAdapter()] })
+    const cache = new Cacheable({ buckets: [new MemoryBucket()] })
     const value = 10
     const cachedValue = await cache.remember(() => mockedApiRequest(value), 'a')
     expect(await cache.isCached('a')).toEqual(true)
@@ -30,7 +30,7 @@ describe('Cache operations', () => {
   })
 
   it('Stores multiple caches', async () => {
-    const cache = new Cacheables({ adapters: [new MemoryAdapter()] })
+    const cache = new Cacheable({ buckets: [new MemoryBucket()] })
 
     const valueA = 10
     const valueB = 20
@@ -50,7 +50,7 @@ describe('Cache operations', () => {
   })
 
   it('Deletes values', async () => {
-    const cache = new Cacheables({ adapters: [new MemoryAdapter()] })
+    const cache = new Cacheable({ buckets: [new MemoryBucket()] })
 
     const value = 10
     await cache.remember(() => mockedApiRequest(value), 'a')
@@ -61,7 +61,7 @@ describe('Cache operations', () => {
   })
 
   it('Clears the cache', async () => {
-    const cache = new Cacheables({ adapters: [new MemoryAdapter()] })
+    const cache = new Cacheable({ buckets: [new MemoryBucket()] })
 
     const value = 10
     await cache.remember(() => mockedApiRequest(value), 'a')
@@ -72,13 +72,13 @@ describe('Cache operations', () => {
   })
 
   it('Creates proper keys', () => {
-    const key = Cacheables.key('aaa', 'bbb', 'ccc', 'ddd', 10, 20)
+    const key = Cacheable.key('aaa', 'bbb', 'ccc', 'ddd', 10, 20)
     expect(key).toEqual('aaa:bbb:ccc:ddd:10:20')
   })
 
   it('Returns correctly if disabled', async () => {
-    const cache = new Cacheables({
-      adapters: [new MemoryAdapter()],
+    const cache = new Cacheable({
+      buckets: [new MemoryBucket()],
       enabled: false,
     })
 
@@ -94,8 +94,8 @@ describe('Cache operations', () => {
   it('Logs correctly', async () => {
     console.log = jest.fn()
 
-    const cache = new Cacheables({
-      adapters: [new MemoryAdapter()],
+    const cache = new Cacheable({
+      buckets: [new MemoryBucket()],
       log: true,
       enabled: false,
     })
@@ -116,9 +116,9 @@ describe('Cache operations', () => {
     expect(console.log).lastCalledWith('Cacheable "a": hits: 2')
   })
 
-  it('Throws when constructed without adapters', () => {
-    expect(() => new Cacheables({ adapters: [] })).toThrow(
-      'At least one storage adapter is required',
+  it('Throws when constructed without buckets', () => {
+    expect(() => new Cacheable({ buckets: [] })).toThrow(
+      'At least one bucket is required',
     )
   })
 
@@ -130,8 +130,8 @@ describe('Cache operations', () => {
    * Assuming the time starts at 0
    */
   it('Handles race conditions correctly', async () => {
-    const cache = new Cacheables({
-      adapters: [new MemoryAdapter()],
+    const cache = new Cacheable({
+      buckets: [new MemoryBucket()],
       policy: 'max-age',
       maxAge: 100,
     })
@@ -159,8 +159,8 @@ describe('Cache operations', () => {
   it('Handles multiple calls correctly', async () => {
     console.log = jest.fn()
 
-    const cache = new Cacheables({
-      adapters: [new MemoryAdapter()],
+    const cache = new Cacheable({
+      buckets: [new MemoryBucket()],
       log: true,
       policy: 'max-age',
       maxAge: 100,
@@ -192,7 +192,7 @@ describe('Cache operations', () => {
   })
 
   it("Doesn't interfere with error handling", async () => {
-    const cache = new Cacheables({ adapters: [new MemoryAdapter()] })
+    const cache = new Cacheable({ buckets: [new MemoryBucket()] })
     const rejecting = () => {
       return cache.remember(() => mockedApiRequest(0, 10, true), 'a')
     }
@@ -200,7 +200,7 @@ describe('Cache operations', () => {
   })
 
   it("Doesn't cache rejected value", async () => {
-    const cache = new Cacheables({ adapters: [new MemoryAdapter()] })
+    const cache = new Cacheable({ buckets: [new MemoryBucket()] })
     let errNo = 1
     const rejecting = () => {
       return cache.remember(() => Promise.reject(errNo++), 'a')

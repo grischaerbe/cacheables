@@ -76,7 +76,8 @@ export class Cacheables {
     this.logTiming = options?.logTiming ?? false
     this.#policy = options?.policy ?? 'cache-only'
     this.#maxAge =
-      options?.policy === 'max-age' || options?.policy === 'stale-while-revalidate'
+      options?.policy === 'max-age' ||
+      options?.policy === 'stale-while-revalidate'
         ? options.maxAge
         : undefined
   }
@@ -126,7 +127,7 @@ export class Cacheables {
    * @param resource A function returning a Promise
    * @param key A key to identify the cache
    * @example
-   * const apiResponse = await cache.cacheable(
+   * const apiResponse = await cache.remember(
    *   () => api.query({
    *     query: someQuery,
    *     variables: someVariables,
@@ -136,7 +137,7 @@ export class Cacheables {
    * @returns promise Resolves to the value of the provided resource, either from
    * cache or from the remote resource itself.
    */
-  async cacheable<T>(resource: () => Promise<T>, key: string): Promise<T> {
+  async remember<T>(resource: () => Promise<T>, key: string): Promise<T> {
     const shouldCache = this.enabled
     if (!shouldCache) {
       if (this.log) Logger.logDisabled()
@@ -148,7 +149,7 @@ export class Cacheables {
     const logId = Logger.getLogId(key)
     if (logTiming) Logger.logTime(logId)
 
-    const result = await this.#cacheable(resource, key)
+    const result = await this.#remember(resource, key)
 
     if (logTiming) Logger.logTimeEnd(logId)
     if (log) Logger.logStats(key, this.#cacheables[key])
@@ -156,7 +157,7 @@ export class Cacheables {
     return result
   }
 
-  #cacheable<T>(resource: () => Promise<T>, key: string): Promise<T> {
+  #remember<T>(resource: () => Promise<T>, key: string): Promise<T> {
     let cacheable = this.#cacheables[key] as Cacheable<T> | undefined
 
     if (!cacheable) {

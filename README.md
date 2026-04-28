@@ -22,7 +22,7 @@ A simple in-memory cache with support of different cache policies and elegant sy
 fetch('https://some-url.com/api')
 
 // with caching
-cache.cacheable(() => fetch('https://some-url.com/api'), 'key')
+cache.remember(() => fetch('https://some-url.com/api'), 'key')
 ```
 
 * [Installation](#installation)
@@ -30,7 +30,7 @@ cache.cacheable(() => fetch('https://some-url.com/api'), 'key')
 * [Usage](#usage)
 * [API](#api)
   * [new Cacheables(options?): Cacheables](#new-cacheablesoptions-cacheables)
-  * [cache.cacheable(resource, key): Promise&lt;T&gt;](#cachecacheableresource-key-promiset)
+  * [cache.remember(resource, key): Promise&lt;T&gt;](#cacherememberresource-key-promiset)
   * [cache.delete(key: string): void](#cachedeletekey-string-void)
   * [cache.clear(): void](#cacheclear-void)
   * [cache.keys(): string[]](#cachekeys-string)
@@ -79,7 +79,7 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 // The method returns a fully typed Promise just like `fetch(apiUrl)`
 // would but with the benefit of caching the result.
 const getWeatherData = () =>
-  cache.cacheable(() => fetch(apiUrl), 'weather')
+  cache.remember(() => fetch(apiUrl), 'weather')
 
 const start = async () => {
   // Fetch some fresh weather data and store it in our cache.
@@ -103,9 +103,9 @@ const start = async () => {
 start()
 ```
 
-`cacheable` serves both as the getter and setter. This method will return a cached resource if available or use the provided argument `resource` to fill the cache and return a value.
+`remember` serves both as the getter and setter. This method will return a cached resource if available or use the provided argument `resource` to fill the cache and return a value.
 
-> Be aware that there is no exclusive cache getter (like `cache.get('key)`). This is by design as the Promise provided by the first argument to `cacheable` is used to infer the return type of the cached resource.
+> Be aware that there is no exclusive cache getter (like `cache.get('key)`). This is by design as the Promise provided by the first argument to `remember` is used to infer the return type of the cached resource.
 
 ## API
 
@@ -145,9 +145,9 @@ const cache = new Cacheables({
 })
 ```
 
-### `cache.cacheable(resource, key): Promise<T>`
+### `cache.remember(resource, key): Promise<T>`
 
-- If a resource exists in the cache (determined by the presence of a value with key `key`) `cacheable` decides on returning a cache based on the instance's cache policy.
+- If a resource exists in the cache (determined by the presence of a value with key `key`) `remember` decides on returning a cache based on the instance's cache policy.
 - If there's no resource in the cache, the provided `resource` will be called and used to store a cache value with key `key` and the value is returned.
 
 #### Arguments
@@ -166,7 +166,7 @@ See [Cacheables.key()](#cacheableskeyargs-string--number-string) for a safe and 
 ```ts
 const cache = new Cacheables({ policy: 'max-age', maxAge: 10000 })
 
-const cachedApiResponse = await cache.cacheable(
+const cachedApiResponse = await cache.remember(
   () => fetch('https://github.com/'),
   'key',
 )
@@ -241,7 +241,7 @@ If there is no cache yet, all calls will be resolved by the first network reques
 ##### Example
 ```ts
 const cache = new Cacheables({ policy: 'cache-only' })
-cache.cacheable(() => fetch(url), 'a')
+cache.remember(() => fetch(url), 'a')
 ```
 
 ### Network Only
@@ -252,7 +252,7 @@ Simultaneous requests trigger simultaneous network requests.
 ##### Example
 ```ts
 const cache = new Cacheables({ policy: 'network-only' })
-cache.cacheable(() => fetch(url), 'a')
+cache.remember(() => fetch(url), 'a')
 ```
 
 ### Network Only – Non Concurrent
@@ -263,7 +263,7 @@ All requests should be handled by the network but no concurrent network requests
 ##### Example
 ```ts
 const cache = new Cacheables({ policy: 'network-only-non-concurrent' })
-cache.cacheable(() => fetch(url), 'a')
+cache.remember(() => fetch(url), 'a')
 ```
 
 ### Max Age
@@ -275,7 +275,7 @@ All requests should be checked against max-age. If max-age is expired, a network
 ```ts
 // Trigger a network request if the cached value is older than 1 second.
 const cache = new Cacheables({ policy: 'max-age', maxAge: 1000 })
-cache.cacheable(() => fetch(url), 'a')
+cache.remember(() => fetch(url), 'a')
 ```
 
 ### Stale While Revalidate
@@ -286,14 +286,14 @@ The cache policy `stale-while-revalidate` will return a cached value immediately
 ```ts
 // If there is a cache, return it but 'silently' update the cache.
 const cache = new Cacheables({ policy: 'stale-while-revalidate' })
-cache.cacheable(() => fetch(url), 'a')
+cache.remember(() => fetch(url), 'a')
 ```
 
 ##### Example with `maxAge`
 ```ts
 // If there is a cache, return it and 'silently' update the cache if it's older than 1 second.
 const cache = new Cacheables({ policy: 'stale-while-revalidate', maxAge: 1000 })
-cache.cacheable(() => fetch(url), 'a')
+cache.remember(() => fetch(url), 'a')
 ```
 
 ## In Progress

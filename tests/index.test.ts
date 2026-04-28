@@ -24,7 +24,7 @@ describe('Cache operations', () => {
   it('Returns correct values', async () => {
     const cache = new Cacheables()
     const value = 10
-    const cachedValue = await cache.cacheable(
+    const cachedValue = await cache.remember(
       () => mockedApiRequest(value),
       'a',
     )
@@ -39,11 +39,11 @@ describe('Cache operations', () => {
     const valueA = 10
     const valueB = 20
 
-    const cachedValueA = await cache.cacheable(
+    const cachedValueA = await cache.remember(
       () => mockedApiRequest(valueA),
       'a',
     )
-    const cachedValueB = await cache.cacheable(
+    const cachedValueB = await cache.remember(
       () => mockedApiRequest(valueB),
       'b',
     )
@@ -56,7 +56,7 @@ describe('Cache operations', () => {
     const cache = new Cacheables()
 
     const value = 10
-    await cache.cacheable(() => mockedApiRequest(value), 'a')
+    await cache.remember(() => mockedApiRequest(value), 'a')
 
     expect(cache.isCached('a')).toEqual(true)
     cache.delete('a')
@@ -67,7 +67,7 @@ describe('Cache operations', () => {
     const cache = new Cacheables()
 
     const value = 10
-    await cache.cacheable(() => mockedApiRequest(value), 'a')
+    await cache.remember(() => mockedApiRequest(value), 'a')
 
     expect(cache.isCached('a')).toEqual(true)
     cache.clear()
@@ -85,7 +85,7 @@ describe('Cache operations', () => {
     })
 
     const value = 10
-    const uncachedValue = await cache.cacheable(
+    const uncachedValue = await cache.remember(
       () => mockedApiRequest(value),
       'a',
     )
@@ -101,7 +101,7 @@ describe('Cache operations', () => {
       enabled: false,
     })
 
-    const cachedRequest = () => cache.cacheable(() => mockedApiRequest(1), 'a')
+    const cachedRequest = () => cache.remember(() => mockedApiRequest(1), 'a')
 
     await cachedRequest()
     expect(console.log).lastCalledWith('CACHE: Caching disabled')
@@ -128,7 +128,7 @@ describe('Cache operations', () => {
     })
 
     const racingCache = (v: any) =>
-      cache.cacheable(() => mockedApiRequest(v, 50), 'a')
+      cache.remember(() => mockedApiRequest(v, 50), 'a')
 
     // Create a cache that times out at 100 and resolves at 50
     const a = await racingCache('a')
@@ -157,7 +157,7 @@ describe('Cache operations', () => {
     })
 
     const hitCache = async () => {
-      await cache.cacheable(() => mockedApiRequest(0, 10), 'a')
+      await cache.remember(() => mockedApiRequest(0, 10), 'a')
     }
 
     // This should be a miss and take ~10ms
@@ -184,7 +184,7 @@ describe('Cache operations', () => {
   it("Doesn't interfere with error handling", async () => {
     const cache = new Cacheables()
     const rejecting = () => {
-      return cache.cacheable(() => mockedApiRequest(0, 10, true), 'a')
+      return cache.remember(() => mockedApiRequest(0, 10, true), 'a')
     }
     await expect(rejecting).rejects.toEqual(errorMessage)
   })
@@ -193,7 +193,7 @@ describe('Cache operations', () => {
     const cache = new Cacheables()
     let errNo = 1
     const rejecting = () => {
-      return cache.cacheable(() => Promise.reject(errNo++), 'a')
+      return cache.remember(() => Promise.reject(errNo++), 'a')
     }
     await expect(rejecting()).rejects.toEqual(1)
     await expect(rejecting()).rejects.toEqual(2)

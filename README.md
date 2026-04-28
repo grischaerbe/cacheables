@@ -55,11 +55,11 @@ import { Cacheable, MemoryBucket } from 'cacheables'
 
 const apiUrl = 'https://goweather.herokuapp.com/weather/Karlsruhe'
 
-// 'weather' is the namespace — every key is stored under `weather:<key>`.
+// 'weather-data' is the namespace — every key is stored under `weather-data:<key>`.
 // `buckets` is the layered storage stack; the first entry is L1.
 // `policy: 'max-age'` returns the cached value while it is younger than
 // `maxAge` (in ms), and re-fetches when it has aged past that.
-const cache = new Cacheable('weather', {
+const cache = new Cacheable('weather-data', {
   buckets: [new MemoryBucket()],
   policy: 'max-age',
   maxAge: 5_000,
@@ -67,7 +67,7 @@ const cache = new Cacheable('weather', {
 
 // `remember` is both getter and setter: on a miss it calls the resource
 // and writes to every bucket; on a hit it returns the cached value.
-const getWeather = () => cache.remember(() => fetch(apiUrl), 'weather')
+const getWeather = () => cache.remember(() => fetch(apiUrl), 'karlsruhe')
 
 await getWeather() // miss — fetched
 await getWeather() // hit — cached

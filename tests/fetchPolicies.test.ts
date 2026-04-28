@@ -15,12 +15,10 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 describe('Fetch Policies', () => {
   it('cache-only', async () => {
-    const cache = new Cacheables()
+    const cache = new Cacheables({ policy: 'cache-only' })
 
     const COCacheable = (v: any) =>
-      cache.cacheable(() => mockedApiRequest(v), 'key', {
-        cachePolicy: 'cache-only',
-      })
+      cache.cacheable(() => mockedApiRequest(v), 'key')
 
     const a = await COCacheable(0)
     const b = await COCacheable(1)
@@ -32,12 +30,10 @@ describe('Fetch Policies', () => {
   })
 
   it('network-only-non-concurrent', async () => {
-    const cache = new Cacheables()
+    const cache = new Cacheables({ policy: 'network-only-non-concurrent' })
 
     const NONCCacheable = (v: any) =>
-      cache.cacheable(() => mockedApiRequest(v, 50), 'key', {
-        cachePolicy: 'network-only-non-concurrent',
-      })
+      cache.cacheable(() => mockedApiRequest(v, 50), 'key')
 
     // Preheat cache
     await NONCCacheable(-1)
@@ -55,12 +51,10 @@ describe('Fetch Policies', () => {
     expect(values).toEqual([0, 0, 0, 3])
   })
   it('network-only', async () => {
-    const cache = new Cacheables()
+    const cache = new Cacheables({ policy: 'network-only' })
 
     const NOCacheable = (v: any) =>
-      cache.cacheable(() => mockedApiRequest(v, 50), 'key', {
-        cachePolicy: 'network-only',
-      })
+      cache.cacheable(() => mockedApiRequest(v, 50), 'key')
 
     // Preheat cache
     await NOCacheable(-1)
@@ -74,13 +68,10 @@ describe('Fetch Policies', () => {
     expect(values).toEqual([0, 1, 2])
   })
   it('max-age', async () => {
-    const cache = new Cacheables()
+    const cache = new Cacheables({ policy: 'max-age', maxAge: 100 })
 
     const MACacheable = (v: any) =>
-      cache.cacheable(() => mockedApiRequest(v, 50), 'key', {
-        cachePolicy: 'max-age',
-        maxAge: 100,
-      })
+      cache.cacheable(() => mockedApiRequest(v, 50), 'key')
 
     const a = await MACacheable(0)
     const b = await MACacheable(1)
@@ -93,12 +84,10 @@ describe('Fetch Policies', () => {
     expect([a, b, c, d]).toEqual([0, 0, 2, 2])
   })
   it('stale-while-revalidate', async () => {
-    const cache = new Cacheables()
+    const cache = new Cacheables({ policy: 'stale-while-revalidate' })
 
     const SWRCacheable = (v: any) =>
-      cache.cacheable(() => mockedApiRequest(v, 50), 'key', {
-        cachePolicy: 'stale-while-revalidate',
-      })
+      cache.cacheable(() => mockedApiRequest(v, 50), 'key')
 
     // Preheat cache
     await SWRCacheable(-1)
@@ -119,13 +108,13 @@ describe('Fetch Policies', () => {
   })
 
   it('stale-while-revalidate with maxAge', async () => {
-    const cache = new Cacheables()
+    const cache = new Cacheables({
+      policy: 'stale-while-revalidate',
+      maxAge: 200,
+    })
 
     const SWRCacheable = (v: any) =>
-      cache.cacheable(() => mockedApiRequest(v, 50), 'key', {
-        cachePolicy: 'stale-while-revalidate',
-        maxAge: 200,
-      })
+      cache.cacheable(() => mockedApiRequest(v, 50), 'key')
 
     // Preheat cache, takes ~50ms
     await SWRCacheable(0)

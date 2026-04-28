@@ -1,4 +1,4 @@
-import { CacheableOptions, Cacheables } from '../src'
+import { Cacheables } from '../src'
 
 const errorMessage = 'This is an error message.'
 
@@ -122,13 +122,13 @@ describe('Cache operations', () => {
    * Assuming the time starts at 0
    */
   it('Handles race conditions correctly', async () => {
-    const cache = new Cacheables()
+    const cache = new Cacheables({
+      policy: 'max-age',
+      maxAge: 100,
+    })
 
     const racingCache = (v: any) =>
-      cache.cacheable(() => mockedApiRequest(v, 50), 'a', {
-        cachePolicy: 'max-age',
-        maxAge: 100,
-      })
+      cache.cacheable(() => mockedApiRequest(v, 50), 'a')
 
     // Create a cache that times out at 100 and resolves at 50
     const a = await racingCache('a')
@@ -152,13 +152,12 @@ describe('Cache operations', () => {
 
     const cache = new Cacheables({
       log: true,
+      policy: 'max-age',
+      maxAge: 100,
     })
 
     const hitCache = async () => {
-      await cache.cacheable(() => mockedApiRequest(0, 10), 'a', {
-        cachePolicy: 'max-age',
-        maxAge: 100,
-      })
+      await cache.cacheable(() => mockedApiRequest(0, 10), 'a')
     }
 
     // This should be a miss and take ~10ms

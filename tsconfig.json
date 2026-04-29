@@ -3,7 +3,7 @@
     "target": "ESNext",
     "module": "NodeNext",
     "declaration": true,
-    "lib": ["ESNext", "DOM"],
+    "lib": ["ES2022", "DOM"],
     "moduleResolution": "NodeNext",
     "outDir": "./dist",
     "rootDir": "./src",

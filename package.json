@@ -47,7 +47,13 @@
     "in-memory",
     "typescript",
     "remember",
-    "cacheables"
+    "cacheables",
+    "multilayer",
+    "multi-tier",
+    "stale-while-revalidate",
+    "swr",
+    "redis",
+    "s3"
   ],
   "author": "Grischa Erbe <grischa.erbe@googlemail.com>",
   "license": "MIT",

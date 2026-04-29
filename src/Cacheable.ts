@@ -285,13 +285,12 @@ export class Cacheable<TView = void> {
     hitIdx: number,
     isFresh?: FreshnessPredicate,
   ): Promise<void> {
-    const meta: BucketEntryMeta = { storedAt: hitMeta.storedAt }
     const writes: Promise<void>[] = []
     for (let i = 0; i < this.#buckets.length; i++) {
       if (i === hitIdx) continue
       const probe = probes[i]
       if (probe !== undefined && (!isFresh || isFresh(probe))) continue
-      writes.push(this.#buckets[i]!.write(fullKey, value, meta))
+      writes.push(this.#buckets[i]!.write(fullKey, value, hitMeta))
     }
     if (writes.length > 0) await Promise.all(writes)
   }

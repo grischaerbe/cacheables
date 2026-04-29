@@ -27,10 +27,11 @@ describe('MemoryBucket', () => {
     expect(await a.read('missing')).toBeUndefined()
   })
 
-  it('resolve returns undefined (no view)', async () => {
+  it('resolve wraps presence as { view: undefined } and returns undefined for absence', async () => {
     const a = new MemoryBucket()
     await a.write('k', 'v', { storedAt: 1 })
-    expect(await a.resolve('k')).toBeUndefined()
+    expect(await a.resolve('k')).toEqual({ view: undefined })
+    expect(await a.resolve('missing')).toBeUndefined()
   })
 
   it('delete removes only the specified key', async () => {

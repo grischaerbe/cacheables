@@ -12,11 +12,18 @@ export interface BucketEntryMeta {
 /**
  * Bucket contract. Buckets back the layers (L1, L2, ...) of a
  * `Cacheable` instance. Reads cascade L1 → Ln; on any hit the engine
- * fills missing layers with the hit value preserving `meta.storedAt`.
+ * fills missing or stale layers with the hit value preserving
+ * `meta.storedAt`.
  *
  * `TView` is the bucket's user-facing projection — what
  * `cache.resolve()` returns. A bucket without a meaningful projection
- * (e.g. `MemoryBucket`) sets `TView = void`.
+ * (e.g. `MemoryBucket`) sets `TView = void` and returns
+ * `{ view: undefined }` from `resolve` when the entry is present.
+ *
+ * The engine maintains two parallel cascade paths: `cache.remember()`
+ * uses `read` (value-cascade), `cache.resolve()` uses `resolve`
+ * (view-cascade). The view-cascade hot path skips the value read
+ * entirely on L1 hits when no other layer needs back-filling.
  *
  * Contracts:
  * - `meta` MUST be cheap (engine probes it on every layer per read).
@@ -25,10 +32,13 @@ export interface BucketEntryMeta {
  *   whose value is itself `undefined` without colliding with the
  *   absence signal.
  * - `write` MUST persist `meta.storedAt` verbatim.
- * - `resolve` MUST return the bucket's projection for a present
- *   entry, and MAY return `undefined` if the entry has since been
- *   evicted (the engine treats this as a strict-mode error after a
- *   successful cascade write/fill).
+ * - `resolve` returns `undefined` when the entry is absent and
+ *   `{ view }` when present. The wrapper mirrors `read`: it lets
+ *   `TView = void` buckets distinguish "entry present, no projection"
+ *   (`{ view: undefined }`) from "entry absent" (`undefined`). The
+ *   engine treats absence after a meta-probe hit as a race and heals
+ *   it like the read path; absence after a successful cascade
+ *   write/fill is a strict-mode error and the engine throws.
  * - `clear` MUST remove every entry the bucket manages.
  * - All six methods MAY throw on infrastructure errors. The engine
  *   treats throws as fatal (strict mode).
@@ -37,7 +47,7 @@ export interface IBucket<TView = void> {
   read<T>(key: string): Promise<{ value: T } | undefined>
   write<T>(key: string, value: T, meta: BucketEntryMeta): Promise<void>
   meta(key: string): Promise<BucketEntryMeta | undefined>
-  resolve(key: string): Promise<TView | undefined>
+  resolve(key: string): Promise<{ view: TView } | undefined>
   delete(key: string): Promise<void>
   clear(): Promise<void>
 }

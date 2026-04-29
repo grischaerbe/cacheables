@@ -10,11 +10,15 @@ interface UrlView {
 class FakeViewBucket implements IBucket<UrlView> {
   store = new Map<string, { value: unknown; meta: BucketEntryMeta }>()
 
+  readCalls = 0
+  resolveCalls = 0
+
   constructor(seed?: { key: string; value: unknown; meta: BucketEntryMeta }) {
     if (seed) this.store.set(seed.key, { value: seed.value, meta: seed.meta })
   }
 
   async read<T>(key: string): Promise<{ value: T } | undefined> {
+    this.readCalls += 1
     const entry = this.store.get(key)
     return entry === undefined ? undefined : { value: entry.value as T }
   }
@@ -27,8 +31,9 @@ class FakeViewBucket implements IBucket<UrlView> {
     return this.store.get(key)?.meta
   }
 
-  async resolve(key: string): Promise<UrlView | undefined> {
-    return this.store.has(key) ? { url: `fake://${key}` } : undefined
+  async resolve(key: string): Promise<{ view: UrlView } | undefined> {
+    this.resolveCalls += 1
+    return this.store.has(key) ? { view: { url: `fake://${key}` } } : undefined
   }
 
   async delete(key: string): Promise<void> {
@@ -217,6 +222,129 @@ describe('cache.resolve(): policy semantics', () => {
     await cache.resolve(async () => 'v', 'k')
     expect(log).lastCalledWith(
       expect.stringMatching(/^Cacheable "k": HIT \d+(\.\d+)?ms$/),
+    )
+  })
+})
+
+describe('cache.resolve(): view-cascade hot path', () => {
+  it('L1 hit (single layer): no value read, only meta + resolve', async () => {
+    const l1 = new FakeViewBucket({
+      key: 'test:k',
+      value: 'cached',
+      meta: { storedAt: 1 },
+    })
+    const cache = new Cacheable<UrlView>('test', { buckets: [l1] })
+
+    l1.readCalls = 0
+    l1.resolveCalls = 0
+
+    await cache.resolve(async () => 'fresh', 'k')
+    expect(l1.readCalls).toBe(0)
+    expect(l1.resolveCalls).toBe(1)
+  })
+
+  it('L1 hit + L2 also fresh: still skips value read', async () => {
+    const now = Date.now()
+    const l1 = new FakeViewBucket({
+      key: 'test:k',
+      value: 'l1',
+      meta: { storedAt: now },
+    })
+    const l2 = new FakeViewBucket({
+      key: 'test:k',
+      value: 'l2',
+      meta: { storedAt: now - 10 },
+    })
+    const cache = new Cacheable<UrlView>('test', {
+      buckets: [l1, l2],
+      policy: 'max-age',
+      maxAge: 1000,
+    })
+
+    l1.readCalls = 0
+    l2.readCalls = 0
+
+    await cache.resolve(async () => 'fresh', 'k')
+    expect(l1.readCalls).toBe(0)
+    expect(l2.readCalls).toBe(0)
+  })
+
+  it('L1 hit + L2 missing: reads value to fill L2, then returns L1 view', async () => {
+    const l1 = new FakeViewBucket({
+      key: 'test:k',
+      value: 'l1',
+      meta: { storedAt: 1 },
+    })
+    const l2 = new FakeViewBucket()
+    const cache = new Cacheable<UrlView>('test', { buckets: [l1, l2] })
+
+    l1.readCalls = 0
+
+    const view = await cache.resolve(async () => 'fresh', 'k')
+    expect(view).toEqual({ url: 'fake://test:k' })
+    expect(l1.readCalls).toBe(1)
+    expect(l2.store.has('test:k')).toBe(true)
+  })
+
+  it('max-age stale L1 + fresh L2: cascade fill refreshes L1, returns L1 view', async () => {
+    const now = Date.now()
+    const l1 = new FakeViewBucket({
+      key: 'test:k',
+      value: 'l1-stale',
+      meta: { storedAt: now - 500 },
+    })
+    const l2 = new FakeViewBucket({
+      key: 'test:k',
+      value: 'l2-fresh',
+      meta: { storedAt: now - 50 },
+    })
+    const cache = new Cacheable<UrlView>('test', {
+      buckets: [l1, l2],
+      policy: 'max-age',
+      maxAge: 100,
+    })
+
+    const view = await cache.resolve(async () => 'network', 'k')
+    expect(view).toEqual({ url: 'fake://test:k' })
+    expect((await l1.meta('test:k'))?.storedAt).toBe(now - 50)
+  })
+})
+
+describe('cache.resolve(): race healing and strict-mode', () => {
+  it('heals race when bucket.resolve returns undefined despite meta hit', async () => {
+    const l1 = new FakeViewBucket({
+      key: 'test:k',
+      value: 'cached',
+      meta: { storedAt: Date.now() },
+    })
+
+    let resolveCount = 0
+    const realResolve = l1.resolve.bind(l1)
+    l1.resolve = async (key: string) => {
+      resolveCount += 1
+      if (resolveCount === 1) return undefined // simulate eviction race
+      return realResolve(key)
+    }
+
+    const cache = new Cacheable<UrlView>('test', { buckets: [l1] })
+
+    let calls = 0
+    const view = await cache.resolve(async () => {
+      calls += 1
+      return 'fresh'
+    }, 'k')
+
+    expect(view).toEqual({ url: 'fake://test:k' })
+    expect(calls).toBe(1) // race healed via running resource
+  })
+
+  it('throws strict-mode error when bucket.resolve returns undefined after a successful cascade write', async () => {
+    const l1 = new FakeViewBucket()
+    l1.resolve = async () => undefined // bucket never produces a view
+    const cache = new Cacheable<UrlView>('test', { buckets: [l1] })
+
+    await expect(cache.resolve(async () => 'fresh', 'k')).rejects.toThrow(
+      /returned no view.*after a successful cascade write/,
     )
   })
 })

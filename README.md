@@ -112,8 +112,8 @@ interface UrlView {
 
 class FilesystemBucket implements IBucket<UrlView> {
   // read / write / meta / delete / clear …
-  async resolve(key: string): Promise<UrlView | undefined> {
-    /* return the local URL where the cached blob lives */
+  async resolve(key: string): Promise<{ view: UrlView } | undefined> {
+    /* return { view: { url: pathFor(key) } } when the entry exists */
   }
 }
 
@@ -126,6 +126,8 @@ const { url } = await cache.resolve(
   imageUrl,
 )
 ```
+
+`resolve` runs a separate **view-cascade**: the engine probes `meta()` on every layer and, on an L1 hit where no other layer needs back-filling, calls `bucket.resolve()` directly without ever reading the value. A filesystem bucket holding a 5 MB ArrayBuffer never opens the file on the hot path — only the projection (URL) is materialized.
 
 `resolve` and `remember` share the same in-flight registry: a concurrent pair against the same key triggers `resource()` once. `resolve` honors the cache policy — a stale entry will trigger a producer call (or a background revalidation under `stale-while-revalidate`).
 
@@ -158,7 +160,7 @@ interface IBucket<TView = void> {
   read<T>(key: string): Promise<{ value: T } | undefined>
   write<T>(key: string, value: T, meta: BucketEntryMeta): Promise<void>
   meta(key: string): Promise<BucketEntryMeta | undefined>
-  resolve(key: string): Promise<TView | undefined>
+  resolve(key: string): Promise<{ view: TView } | undefined>
   delete(key: string): Promise<void>
   clear(): Promise<void>
 }
@@ -171,7 +173,7 @@ Rules:
 - `meta` MUST be cheap. The engine probes it on every layer for every read. A typical L2 keeps a sidecar (file, table, key/value entry) so probes don't hit the value blob.
 - `read` returns `undefined` for absence and `{ value }` for presence — the wrapper lets buckets store entries whose value is itself `undefined` without colliding with the absence signal.
 - `write` MUST persist `meta.storedAt` verbatim. The engine always supplies a meta; there is no synthesis branch.
-- `resolve` MUST return the bucket's `TView` projection for a present entry. Buckets with no projection set `TView = void` and return `undefined`.
+- `resolve` returns `undefined` for absence and `{ view }` for presence. The same wrapper pattern as `read` lets `TView = void` buckets distinguish "entry present, no projection" (`{ view: undefined }`) from "entry absent" (`undefined`). The engine treats absence after a meta-probe hit as a race and heals it by running the producer; absence after a successful cascade write is a strict-mode error and the engine throws.
 - `clear` MUST remove every entry the bucket manages.
 - Any throw from any bucket rejects the surrounding `remember()` / `resolve()` call. There is no per-bucket error suppression.
 
@@ -185,9 +187,10 @@ const cache = new Cacheable('app', {
 })
 ```
 
-- **Read**: probe `meta()` on every layer in parallel; the first layer satisfying the freshness predicate is the hit. Read its value, then back-fill every layer above and below that is still missing the key, using the hit layer's `storedAt` verbatim.
+- **Read (`cache.remember`)**: probe `meta()` on every layer in parallel; the first layer satisfying the freshness predicate is the hit. Read its value, then back-fill every layer that is missing OR stale, using the hit layer's `storedAt` verbatim.
+- **Read (`cache.resolve`)**: probe `meta()` on every layer; on an L1 hit where no other layer needs back-filling, call `bucket.resolve()` directly without reading the value. When a deeper layer hits or upper layers need refilling, the value is read from the hit layer to fill the others, then L1's view is returned.
 - **Miss + `resource()`**: the engine mints a single `{ storedAt }` and writes to every layer in parallel — all layers converge on the same `storedAt`.
-- **Stale L1 + fresh L2** (under `max-age`): the freshness predicate filters per-layer, so the engine returns the fresh L2 value and back-fills L1.
+- **Stale L1 + fresh L2** (under `max-age`): the freshness predicate filters per-layer, so the engine returns the fresh L2 value AND refreshes L1 with L2's value and `storedAt` verbatim.
 
 ### Built-in `MemoryBucket`
 
@@ -216,8 +219,8 @@ class FileSystemBucket implements IBucket {
   async meta(key: string): Promise<BucketEntryMeta | undefined> {
     /* … */
   }
-  async resolve(): Promise<void> {
-    /* no projection — TView defaults to void */
+  async resolve(key: string): Promise<{ view: void } | undefined> {
+    /* no projection — return { view: undefined } if the entry exists */
   }
   async delete(key: string): Promise<void> {
     /* … */
@@ -249,8 +252,8 @@ class FilesystemBucket implements IBucket<UrlView> {
   async meta(key: string): Promise<BucketEntryMeta | undefined> {
     /* read the sidecar */
   }
-  async resolve(key: string): Promise<UrlView | undefined> {
-    /* return { url: pathFor(key) } when the entry exists */
+  async resolve(key: string): Promise<{ view: UrlView } | undefined> {
+    /* return { view: { url: pathFor(key) } } when the entry exists */
   }
   async delete(key: string): Promise<void> {
     /* … */

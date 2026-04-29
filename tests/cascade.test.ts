@@ -44,9 +44,10 @@ class FakeBucket implements IBucket<void> {
     return this.store.get(key)?.meta
   }
 
-  async resolve(_key: string): Promise<void> {
+  async resolve(key: string): Promise<{ view: void } | undefined> {
     this.resolveCalls += 1
     if (this.throwOn.resolve) throw new Error('resolve failed')
+    return this.store.has(key) ? { view: undefined } : undefined
   }
 
   async delete(key: string): Promise<void> {
@@ -185,6 +186,31 @@ describe('cascade behavior', () => {
 
     expect(result).toEqual('l2-fresh')
     expect(calls).toBe(0)
+  })
+
+  it('max-age stale L1 + fresh L2: cascade fill refreshes L1 with L2 value and meta', async () => {
+    const now = Date.now()
+    const l1 = new FakeBucket({
+      key: 'test:k',
+      value: 'l1-stale',
+      meta: { storedAt: now - 500 },
+    })
+    const l2 = new FakeBucket({
+      key: 'test:k',
+      value: 'l2-fresh',
+      meta: { storedAt: now - 50 },
+    })
+    const cache = new Cacheable('test', {
+      buckets: [l1, l2],
+      policy: 'max-age',
+      maxAge: 100,
+    })
+
+    const result = await cache.remember(async () => 'network', 'k')
+    expect(result).toEqual('l2-fresh')
+    expect(l1.writeCalls.length).toBe(1)
+    expect(l1.writeCalls[0]!.value).toBe('l2-fresh')
+    expect(l1.writeCalls[0]!.meta.storedAt).toBe(now - 50)
   })
 
   it('max-age miss across all layers calls resource', async () => {

@@ -6,4 +6,6 @@ export type {
   CacheableOptions,
   IBucket,
   ILogger,
+  Policy,
+  PolicyOptions,
 } from './types'

@@ -29,7 +29,6 @@ cache.remember(() => fetch('https://some-url.com/api'), 'key')
   - [cache.remember(resource, key)](#cacherememberresource-key-promiset)
   - [cache.resolve(resource, key)](#cacheresolveresource-key-promisetview)
   - [cache.delete(key) / cache.clear()](#cachedeletekey-promisevoid--cacheclear-promisevoid)
-  - [Cacheable.key(...args)](#cacheablekeyargs-string)
 - [Buckets](#buckets)
 - [Cache Policies](#cache-policies)
   - [`cache-only` (default)](#cache-only-default)
@@ -99,7 +98,7 @@ type CacheableOptions<TView = void> = {
 
 ### `cache.remember(resource, key): Promise<T>`
 
-Resolves to the cached value if present (subject to policy); otherwise calls `resource()` and writes to every bucket.
+Returns the cached value if present (subject to policy); otherwise calls `resource()` and writes to every bucket.
 
 ### `cache.resolve(resource, key): Promise<TView>`
 
@@ -131,19 +130,11 @@ const { url } = await cache.resolve(
 
 `resolve` and `remember` share the same in-flight registry: a concurrent pair against the same key triggers `resource()` once. `resolve` honors the cache policy — a stale entry will trigger a producer call (or a background revalidation under `stale-while-revalidate`).
 
-For buckets without a meaningful projection (e.g. the built-in `MemoryBucket`), `TView = void` and `cache.resolve()` resolves to `undefined`. Use `cache.remember()` instead in that case.
+For buckets without a meaningful projection (e.g. the built-in `MemoryBucket`), `TView = void` and `cache.resolve()` resolves to `undefined`.
 
 ### `cache.delete(key): Promise<void>` / `cache.clear(): Promise<void>`
 
-`delete` removes the entry from every bucket. `clear` wipes every bucket and the in-flight registry. Both are async — `await` them.
-
-### `Cacheable.key(...args): string`
-
-Joins parts with `:`.
-
-```ts
-Cacheable.key('user', 42) // 'user:42'
-```
+`delete` removes the entry from every bucket. `clear` wipes every bucket and the in-flight registry.
 
 ## Buckets
 
@@ -175,7 +166,7 @@ Rules:
 - `write` MUST persist `meta.storedAt` verbatim. The engine always supplies a meta; there is no synthesis branch.
 - `view` returns `undefined` for absence and `{ view }` for presence. The same wrapper pattern as `read` lets `TView = void` buckets distinguish "entry present, no projection" (`{ view: undefined }`) from "entry absent" (`undefined`). The engine treats absence after a meta-probe hit as a race and heals it by running the producer; absence after a successful cascade write is a strict-mode error and the engine throws.
 - `clear` MUST remove every entry the bucket manages.
-- Any throw from any bucket rejects the surrounding `remember()` / `resolve()` call. There is no per-bucket error suppression.
+- Any throw from any bucket rejects the surrounding `remember()` / `resolve()` call.
 
 ### Cascade behavior
 
@@ -491,7 +482,8 @@ await cache.remember(() => fetch(url), 'weather')
 
 Breaking changes:
 
-- **Class renamed** `Cacheables` → `Cacheable`. Update imports and `new Cacheables(...)` call sites. The static helper moves with it: `Cacheables.key(...)` → `Cacheable.key(...)` (behaviour unchanged).
+- **Class renamed** `Cacheables` → `Cacheable`. Update imports and `new Cacheables(...)` call sites.
+- **`Cacheables.key(...)` removed.** The static key-joining helper is gone; build keys with template literals or `[...].join(':')`.
 - **Method renamed** `cache.cacheable(...)` → `cache.remember(...)`.
 - **Cache policy moved to the constructor.** v2 took `cachePolicy` and `maxAge` as a per-call third argument; v3 has no per-call options. Pass `policy` (and `maxAge` where required) once on `new Cacheable(namespace, { ... })`. The field is `policy`, not `cachePolicy`. A single instance now serves a single policy — split into multiple instances if you previously mixed policies on one cache.
 - **`buckets` is required** (replaces v2's implicit in-memory store). `new Cacheable()` no longer compiles. `new Cacheable('app', { buckets: [new MemoryBucket()] })` reproduces the v2 default.

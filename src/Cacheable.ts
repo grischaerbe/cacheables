@@ -38,10 +38,6 @@ export class Cacheable<TView = void> {
         : undefined
   }
 
-  static key(...args: (string | number)[]): string {
-    return args.join(':')
-  }
-
   #fullKey(key: string): string {
     return `${this.#namespace}:${key}`
   }

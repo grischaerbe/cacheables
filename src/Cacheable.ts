@@ -20,7 +20,8 @@ export class Cacheable<TView = void> {
   #maxAge: number | undefined
   #buckets: IBucket<TView>[]
   #namespace: string
-  #inflight = new Map<string, Promise<unknown>>()
+  #policyInflight = new Map<string, Promise<unknown>>()
+  #producerInflight = new Map<string, Promise<unknown>>()
 
   constructor(namespace: string, options: CacheableOptions<TView>) {
     if (!options.buckets || options.buckets.length === 0) {
@@ -51,7 +52,8 @@ export class Cacheable<TView = void> {
   }
 
   async clear(): Promise<void> {
-    this.#inflight.clear()
+    this.#policyInflight.clear()
+    this.#producerInflight.clear()
     await Promise.all(this.#buckets.map((b) => b.clear()))
   }
 
@@ -63,6 +65,7 @@ export class Cacheable<TView = void> {
     const { result, hit } = await this.#runPolicy<T, T>(
       resource,
       fullKey,
+      `${fullKey}:value`,
       (k, isFresh) => this.#cascadeReadValue<T>(k, isFresh),
       async (value) => value,
     )
@@ -83,6 +86,7 @@ export class Cacheable<TView = void> {
     const { result, hit } = await this.#runPolicy<T, TView>(
       resource,
       fullKey,
+      `${fullKey}:view`,
       (k, isFresh) => this.#cascadeReadView(k, isFresh),
       () => this.#viewFromL1(fullKey),
     )
@@ -108,15 +112,18 @@ export class Cacheable<TView = void> {
   async #runPolicy<T, R>(
     resource: () => Promise<T>,
     fullKey: string,
+    dedupKey: string,
     cascadeRead: CascadeRead<R>,
     fromValue: (value: T) => Promise<R>,
   ): Promise<{ result: R; hit: boolean }> {
     switch (this.#policy) {
       case 'cache-only': {
-        const cached = await cascadeRead(fullKey)
-        if (cached) return { result: cached.result, hit: true }
-        const value = await this.#produceAndWrite(fullKey, resource)
-        return { result: await fromValue(value), hit: false }
+        return this.#dedupPolicy(dedupKey, async () => {
+          const cached = await cascadeRead(fullKey)
+          if (cached) return { result: cached.result, hit: true }
+          const value = await this.#produceAndWrite(fullKey, resource)
+          return { result: await fromValue(value), hit: false }
+        })
       }
       case 'network-only': {
         const value = await resource()
@@ -124,18 +131,22 @@ export class Cacheable<TView = void> {
         return { result: await fromValue(value), hit: false }
       }
       case 'network-only-non-concurrent': {
-        const value = await this.#produceAndWrite(fullKey, resource)
-        return { result: await fromValue(value), hit: false }
+        return this.#dedupPolicy(dedupKey, async () => {
+          const value = await this.#produceAndWrite(fullKey, resource)
+          return { result: await fromValue(value), hit: false }
+        })
       }
       case 'max-age': {
         const maxAge = this.#maxAge as number
-        const cached = await cascadeRead(
-          fullKey,
-          (m) => Date.now() - m.storedAt <= maxAge,
-        )
-        if (cached) return { result: cached.result, hit: true }
-        const value = await this.#produceAndWrite(fullKey, resource)
-        return { result: await fromValue(value), hit: false }
+        return this.#dedupPolicy(dedupKey, async () => {
+          const cached = await cascadeRead(
+            fullKey,
+            (m) => Date.now() - m.storedAt <= maxAge,
+          )
+          if (cached) return { result: cached.result, hit: true }
+          const value = await this.#produceAndWrite(fullKey, resource)
+          return { result: await fromValue(value), hit: false }
+        })
       }
       case 'stale-while-revalidate': {
         const cached = await cascadeRead(fullKey)
@@ -166,20 +177,28 @@ export class Cacheable<TView = void> {
     fullKey: string,
     resource: () => Promise<T>,
   ): Promise<T> {
-    return this.#dedup(fullKey, async () => {
+    return this.#dedupInto(this.#producerInflight, fullKey, async () => {
       const value = await resource()
       await this.#cascadeWrite(fullKey, value)
       return value
     })
   }
 
-  #dedup<T>(fullKey: string, run: () => Promise<T>): Promise<T> {
-    const existing = this.#inflight.get(fullKey) as Promise<T> | undefined
+  #dedupPolicy<T>(dedupKey: string, run: () => Promise<T>): Promise<T> {
+    return this.#dedupInto(this.#policyInflight, dedupKey, run)
+  }
+
+  #dedupInto<T>(
+    inflight: Map<string, Promise<unknown>>,
+    key: string,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    const existing = inflight.get(key) as Promise<T> | undefined
     if (existing) return existing
     const p = run().finally(() => {
-      if (this.#inflight.get(fullKey) === p) this.#inflight.delete(fullKey)
+      if (inflight.get(key) === p) inflight.delete(key)
     })
-    this.#inflight.set(fullKey, p)
+    inflight.set(key, p)
     return p
   }
 

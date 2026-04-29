@@ -466,6 +466,51 @@ describe('concurrent dedup', () => {
     expect(calls).toBe(1)
   })
 
+  it('cache-only: 100 concurrent hit callers share the policy run (1 meta probe, 1 read)', async () => {
+    const seedMeta: BucketEntryMeta = { storedAt: Date.now() }
+    const l1 = new FakeBucket({
+      key: 'test:k',
+      value: 'cached',
+      meta: seedMeta,
+    })
+    const cache = new Cacheable('test', { buckets: [l1] })
+
+    l1.metaCalls = 0
+    l1.readCalls = 0
+
+    const results = await Promise.all(
+      Array.from({ length: 100 }, () =>
+        cache.remember(async () => 'fresh', 'k'),
+      ),
+    )
+
+    expect(results.every((r) => r === 'cached')).toBe(true)
+    expect(l1.metaCalls).toBe(1)
+    expect(l1.readCalls).toBe(1)
+  })
+
+  it('cross-mode: concurrent remember + resolve probe each mode once but share producer', async () => {
+    const l1 = new FakeBucket()
+    const cache = new Cacheable('test', { buckets: [l1] })
+
+    let calls = 0
+    const slow = async () => {
+      calls += 1
+      await wait(20)
+      return 'v'
+    }
+
+    await Promise.all([
+      ...Array.from({ length: 50 }, () => cache.remember(slow, 'k')),
+      ...Array.from({ length: 50 }, () => cache.resolve(slow, 'k')),
+    ])
+
+    // Each mode runs its own outer dedup → each does 1 cascade probe.
+    expect(l1.metaCalls).toBe(2)
+    // Inner producer dedup is shared across modes → producer called once.
+    expect(calls).toBe(1)
+  })
+
   it('network-only: does NOT deduplicate (control)', async () => {
     const l1 = new FakeBucket()
     const cache = new Cacheable('test', {

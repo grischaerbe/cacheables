@@ -13,21 +13,30 @@ type CascadeFn<R> = (
   isFresh?: FreshnessPredicate,
 ) => Promise<{ result: R; meta: BucketEntryMeta } | undefined>
 
+interface CascadeHit {
+  bucket: IBucket<unknown>
+  idx: number
+  meta: BucketEntryMeta
+}
+
 export class Cacheable<TView = void> {
   logger: ILogger | undefined
 
   #policy: Policy
   #maxAge: number | undefined
   #buckets: IBucket<TView>[]
+  #l1: IBucket<TView>
   #namespace: string
   #policyInflight = new Map<string, Promise<unknown>>()
   #producerInflight = new Map<string, Promise<unknown>>()
 
   constructor(namespace: string, options: CacheableOptions<TView>) {
-    if (!options.buckets || options.buckets.length === 0) {
+    const [l1] = options.buckets ?? []
+    if (!l1) {
       throw new Error('At least one bucket is required')
     }
     this.#buckets = options.buckets
+    this.#l1 = l1
     this.#namespace = namespace
     this.logger = options.logger
     this.#policy = options.policy ?? 'cache-only'
@@ -116,7 +125,7 @@ export class Cacheable<TView = void> {
   }
 
   async #viewFromL1(fullKey: string): Promise<TView> {
-    const wrapped = await this.#buckets[0]!.view(fullKey)
+    const wrapped = await this.#l1.view(fullKey)
     if (wrapped === undefined) {
       throw new Error(
         `Cacheable: L1 bucket returned no view for "${fullKey}" after a successful cascade write`,
@@ -226,13 +235,18 @@ export class Cacheable<TView = void> {
     return Promise.all(this.#buckets.map((b) => b.meta(fullKey)))
   }
 
-  #findHitIdx(
+  #findHit(
     probes: (BucketEntryMeta | undefined)[],
     isFresh?: FreshnessPredicate,
-  ): number {
-    return probes.findIndex(
-      (m) => m !== undefined && (isFresh ? isFresh(m) : true),
-    )
+  ): CascadeHit | undefined {
+    for (let i = 0; i < this.#buckets.length; i++) {
+      const meta = probes[i]
+      const bucket = this.#buckets[i]
+      if (!bucket || meta === undefined) continue
+      if (isFresh && !isFresh(meta)) continue
+      return { bucket, idx: i, meta }
+    }
+    return undefined
   }
 
   async #cascadeRead<T>(
@@ -240,17 +254,14 @@ export class Cacheable<TView = void> {
     isFresh?: FreshnessPredicate,
   ): Promise<{ result: T; meta: BucketEntryMeta } | undefined> {
     const probes = await this.#cascadeProbe(fullKey)
-    const hitIdx = this.#findHitIdx(probes, isFresh)
-    if (hitIdx === -1) return undefined
+    const hit = this.#findHit(probes, isFresh)
+    if (!hit) return undefined
 
-    const bucket = this.#buckets[hitIdx]!
-    const result = await bucket.read<T>(fullKey)
+    const result = await (hit.bucket as IBucket<TView>).read<T>(fullKey)
     if (result === undefined) return undefined
 
-    const value = result.value
-    const hitMeta = probes[hitIdx]!
-    await this.#cascadeFill(fullKey, value, hitMeta, probes, hitIdx, isFresh)
-    return { result: value, meta: hitMeta }
+    await this.#cascadeFill(fullKey, result.value, hit.meta, probes, hit.idx, isFresh)
+    return { result: result.value, meta: hit.meta }
   }
 
   async #cascadeResolve(
@@ -258,47 +269,46 @@ export class Cacheable<TView = void> {
     isFresh?: FreshnessPredicate,
   ): Promise<{ result: TView; meta: BucketEntryMeta } | undefined> {
     const probes = await this.#cascadeProbe(fullKey)
-    const hitIdx = this.#findHitIdx(probes, isFresh)
-    if (hitIdx === -1) return undefined
+    const hit = this.#findHit(probes, isFresh)
+    if (!hit) return undefined
 
-    const hitMeta = probes[hitIdx]!
     const needsFill = probes.some(
       (m, i) =>
-        i !== hitIdx && (m === undefined || (isFresh ? !isFresh(m) : false)),
+        i !== hit.idx && (m === undefined || (isFresh ? !isFresh(m) : false)),
     )
 
     if (!needsFill) {
-      const wrapped = await this.#buckets[0]!.view(fullKey)
+      const wrapped = await this.#l1.view(fullKey)
       if (wrapped === undefined) return undefined
-      return { result: wrapped.view, meta: hitMeta }
+      return { result: wrapped.view, meta: hit.meta }
     }
 
-    const result = await this.#buckets[hitIdx]!.read<unknown>(fullKey)
+    const result = await (hit.bucket as IBucket<TView>).read<unknown>(fullKey)
     if (result === undefined) return undefined
 
     await this.#cascadeFill(
       fullKey,
       result.value,
-      hitMeta,
+      hit.meta,
       probes,
-      hitIdx,
+      hit.idx,
       isFresh,
     )
-    const wrapped = await this.#buckets[0]!.view(fullKey)
+    const wrapped = await this.#l1.view(fullKey)
     if (wrapped === undefined) {
-      if (hitIdx !== 0) {
+      if (hit.idx !== 0) {
         // cascadeFill just wrote to L1. Absence here is a strict-mode
         // error per the IBucket contract.
         throw new Error(
           `Cacheable: L1 bucket returned no view for "${fullKey}" after a successful cascade fill`,
         )
       }
-      // hitIdx === 0: cascadeFill skipped L1; the entry was raced away
+      // hit.idx === 0: cascadeFill skipped L1; the entry was raced away
       // between the meta probe and the post-fill view. Heal by falling
       // through to the producer.
       return undefined
     }
-    return { result: wrapped.view, meta: hitMeta }
+    return { result: wrapped.view, meta: hit.meta }
   }
 
   async #cascadeFill<T>(
@@ -310,12 +320,12 @@ export class Cacheable<TView = void> {
     isFresh?: FreshnessPredicate,
   ): Promise<void> {
     const writes: Promise<void>[] = []
-    for (let i = 0; i < this.#buckets.length; i++) {
-      if (i === hitIdx) continue
+    this.#buckets.forEach((bucket, i) => {
+      if (i === hitIdx) return
       const probe = probes[i]
-      if (probe !== undefined && (!isFresh || isFresh(probe))) continue
-      writes.push(this.#buckets[i]!.write(fullKey, value, hitMeta))
-    }
+      if (probe !== undefined && (!isFresh || isFresh(probe))) return
+      writes.push(bucket.write(fullKey, value, hitMeta))
+    })
     if (writes.length > 0) await Promise.all(writes)
   }
 

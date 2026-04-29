@@ -163,8 +163,6 @@ const { url } = await cache.resolve(
 
 `resolve` and `remember` share the same in-flight registry: a concurrent pair against the same key triggers `resource()` once. `resolve` honors the cache policy — a stale entry will trigger a producer call (or a background revalidation under `stale-while-revalidate`).
 
-For buckets without a meaningful projection (e.g. the built-in `MemoryBucket`), `TView = void` and `cache.resolve()` resolves to `undefined`.
-
 ### `cache.delete(key): Promise<void>` / `cache.clear(): Promise<void>`
 
 `delete` removes the entry from every bucket. `clear` wipes every bucket and the in-flight registry.

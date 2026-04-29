@@ -11,7 +11,6 @@ A small, typed cache with composable storage buckets and a handful of cache poli
 - **Five cache policies**, including `stale-while-revalidate`, with concurrency-safe deduplication where it makes sense.
 - **Fully typed**, with a generic `TView` parameter for the bucket's user-facing projection (a URL from a filesystem bucket, a presigned link from S3, …) surfaced via `cache.resolve(...)`.
 - **Required namespace prefix** so multiple instances can share a bucket without collisions.
-- Helper to build cache keys.
 - Works in browser and Node.js. **No dependencies.**
 
 ```ts

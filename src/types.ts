@@ -112,12 +112,6 @@ export type Policy =
   | 'stale-while-revalidate'
 
 /**
- * Combined cache options without bucket wiring. Kept exported for
- * backwards-compatible consumer types that mirror the policy shape.
- */
-export type CacheOptions = CacheOptionsBase & PolicyOptions
-
-/**
  * Constructor options for `Cacheable<TView>`. The namespace is passed
  * as a positional argument; this bag carries everything else.
  *

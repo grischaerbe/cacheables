@@ -260,7 +260,14 @@ export class Cacheable<TView = void> {
     const result = await (hit.bucket as IBucket<TView>).read<T>(fullKey)
     if (result === undefined) return undefined
 
-    await this.#cascadeFill(fullKey, result.value, hit.meta, probes, hit.idx, isFresh)
+    await this.#cascadeFill(
+      fullKey,
+      result.value,
+      hit.meta,
+      probes,
+      hit.idx,
+      isFresh,
+    )
     return { result: result.value, meta: hit.meta }
   }
 

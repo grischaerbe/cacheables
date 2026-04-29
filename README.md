@@ -114,11 +114,7 @@ Returns the cached value if present (subject to policy); otherwise calls `resour
 Same fresh-or-fetch behavior as `remember`, but returns the L1 bucket's view instead of the producer's value. Use this when the bucket produces a domain-specific projection that callers actually need — a filesystem bucket exposing a local URL after caching the bytes, a CDN bucket returning a presigned link, an IndexedDB bucket returning an `ObjectURL`:
 
 ```ts
-import {
-  Cacheable,
-  type IBucket,
-  type BucketEntryMeta,
-} from 'cacheables'
+import { Cacheable, type IBucket, type BucketEntryMeta } from 'cacheables'
 
 interface UrlView {
   url: string
@@ -128,11 +124,7 @@ class FilesystemBucket implements IBucket<UrlView> {
   async read<T>(key: string): Promise<{ value: T } | undefined> {
     /* read bytes back from disk */
   }
-  async write<T>(
-    key: string,
-    value: T,
-    meta: BucketEntryMeta,
-  ): Promise<void> {
+  async write<T>(key: string, value: T, meta: BucketEntryMeta): Promise<void> {
     /* persist value to disk under a deterministic path AND store meta.storedAt */
   }
   async meta(key: string): Promise<BucketEntryMeta | undefined> {

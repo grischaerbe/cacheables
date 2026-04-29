@@ -57,8 +57,9 @@ export interface IBucket<TView = void> {
  * logging stack. When a `Cacheable` is constructed with a `logger`,
  * the engine emits one combined `HIT`/`MISS` message per
  * `remember()` or `resolve()` call, formatted as
- * `Cacheable "<namespace>:<key>": HIT|MISS <Xms>`. When no logger is
- * provided, the engine is silent.
+ * `Cacheable "<namespace>:<key>": HIT (L<n>)|MISS <Xms>` where `L<n>`
+ * is the 1-indexed bucket layer that served the hit. When no logger
+ * is provided, the engine is silent.
  */
 export interface ILogger {
   log(message: string): void

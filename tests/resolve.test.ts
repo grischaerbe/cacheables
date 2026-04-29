@@ -216,12 +216,12 @@ describe('cache.resolve(): policy semantics', () => {
 
     await cache.resolve(async () => 'v', 'k')
     expect(log).lastCalledWith(
-      expect.stringMatching(/^Cacheable "k": MISS \d+(\.\d+)?ms$/),
+      expect.stringMatching(/^Cacheable "test:k": MISS \d+(\.\d+)?ms$/),
     )
 
     await cache.resolve(async () => 'v', 'k')
     expect(log).lastCalledWith(
-      expect.stringMatching(/^Cacheable "k": HIT \d+(\.\d+)?ms$/),
+      expect.stringMatching(/^Cacheable "test:k": HIT \d+(\.\d+)?ms$/),
     )
   })
 })

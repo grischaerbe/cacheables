@@ -73,7 +73,9 @@ export class Cacheable<TView = void> {
 
     if (logger) {
       const elapsed = Math.round((performance.now() - start) * 10) / 10
-      logger.log(`Cacheable "${key}": ${hit ? 'HIT' : 'MISS'} ${elapsed}ms`)
+      logger.log(
+        `Cacheable "${this.#namespace}:${key}": ${hit ? 'HIT' : 'MISS'} ${elapsed}ms`,
+      )
     }
 
     return result
@@ -95,7 +97,9 @@ export class Cacheable<TView = void> {
 
     if (logger) {
       const elapsed = Math.round((performance.now() - start) * 10) / 10
-      logger.log(`Cacheable "${key}": ${hit ? 'HIT' : 'MISS'} ${elapsed}ms`)
+      logger.log(
+        `Cacheable "${this.#namespace}:${key}": ${hit ? 'HIT' : 'MISS'} ${elapsed}ms`,
+      )
     }
 
     return result

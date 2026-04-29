@@ -406,11 +406,11 @@ interface ILogger {
 }
 ```
 
-Every `cache.remember(...)` and `cache.resolve(...)` emits one message, tagged `HIT` or `MISS` with the elapsed time:
+Every `cache.remember(...)` and `cache.resolve(...)` emits one message, tagged `HIT` or `MISS` with the elapsed time. The format is `Cacheable "${namespace}:${key}": …` so two namespaces sharing one logger remain distinguishable:
 
 ```
-Cacheable "weather": MISS 12ms
-Cacheable "weather": HIT 0.2ms
+Cacheable "weather-data:karlsruhe": MISS 12ms
+Cacheable "weather-data:karlsruhe": HIT 0.2ms
 ```
 
 The built-in `ConsoleLogger` forwards to `console.log`:
@@ -492,7 +492,7 @@ Breaking changes:
 - **`keys()` removed.** Enumerating heterogeneous async layers (some non-enumerable, like CDNs) has no single sensible semantic.
 - **`delete` and `clear` are async.** They now return `Promise<void>` — add `await`.
 - **`isCached` removed.** v3 has no public presence-check API; if you need one, query your bucket directly (e.g. `await bucket.meta(fullKey)`).
-- **`log` / `logTiming` replaced by `logger`.** Pass `new ConsoleLogger()` to restore the previous default-on logging, or implement `ILogger` to route messages elsewhere. Each `remember()` call emits a single formatted message (`Cacheable "<key>": HIT|MISS <Xms>`) instead of `console.time` / `timeEnd`.
+- **`log` / `logTiming` replaced by `logger`.** Pass `new ConsoleLogger()` to restore the previous default-on logging, or implement `ILogger` to route messages elsewhere. Each `remember()` call emits a single formatted message (`Cacheable "<namespace>:<key>": HIT|MISS <Xms>`) instead of `console.time` / `timeEnd`.
 - **Options types reshaped.** v2's `CacheOptions` (constructor) and `CacheableOptions` (per-call) are gone. v3's constructor options type is `CacheableOptions` — same name as v2's per-call type, completely different shape (it now carries `buckets`, `policy`, and `logger`; `namespace` is the constructor's first positional argument).
 - **Buckets can throw.** Any throw from any bucket rejects `remember()`. v2's in-memory store couldn't fail, so this is a new error surface to be aware of once you wire up a custom bucket.
 

@@ -208,7 +208,7 @@ describe('cache.resolve(): policy semantics', () => {
   })
 
   it('logs HIT/MISS with elapsed time, same shape as remember', async () => {
-    const log = jest.fn()
+    const log = vi.fn()
     const cache = new Cacheable<UrlView>('test', {
       buckets: [new FakeViewBucket()],
       logger: { log },

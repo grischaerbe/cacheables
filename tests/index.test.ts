@@ -76,7 +76,7 @@ describe('Cache operations', () => {
   })
 
   it('Logs correctly', async () => {
-    console.log = jest.fn()
+    console.log = vi.fn()
 
     const cache = new Cacheable('test', {
       buckets: [new MemoryBucket()],
@@ -142,7 +142,7 @@ describe('Cache operations', () => {
   })
 
   it('Handles multiple calls correctly', async () => {
-    console.log = jest.fn()
+    console.log = vi.fn()
 
     const cache = new Cacheable('test', {
       buckets: [new MemoryBucket()],

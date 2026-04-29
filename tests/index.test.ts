@@ -86,17 +86,17 @@ describe('Cache operations', () => {
     const cachedRequest = () => cache.remember(() => mockedApiRequest(1), 'a')
 
     await cachedRequest()
-    expect(console.log).lastCalledWith(
+    expect(console.log).toHaveBeenLastCalledWith(
       expect.stringMatching(/^Cacheable "test:a": MISS \d+(\.\d+)?ms$/),
     )
 
     await cachedRequest()
-    expect(console.log).lastCalledWith(
+    expect(console.log).toHaveBeenLastCalledWith(
       expect.stringMatching(/^Cacheable "test:a": HIT \d+(\.\d+)?ms$/),
     )
 
     await cachedRequest()
-    expect(console.log).lastCalledWith(
+    expect(console.log).toHaveBeenLastCalledWith(
       expect.stringMatching(/^Cacheable "test:a": HIT \d+(\.\d+)?ms$/),
     )
   })
@@ -157,13 +157,13 @@ describe('Cache operations', () => {
 
     // This should be a miss and take ~10ms
     await hitCache()
-    expect(console.log).lastCalledWith(
+    expect(console.log).toHaveBeenLastCalledWith(
       expect.stringMatching(/^Cacheable "test:a": MISS \d+(\.\d+)?ms$/),
     )
 
     // This should be a hit and take ~0ms
     await hitCache()
-    expect(console.log).lastCalledWith(
+    expect(console.log).toHaveBeenLastCalledWith(
       expect.stringMatching(/^Cacheable "test:a": HIT \d+(\.\d+)?ms$/),
     )
 
@@ -171,7 +171,7 @@ describe('Cache operations', () => {
 
     // This should be a hit and take ~0ms
     await hitCache()
-    expect(console.log).lastCalledWith(
+    expect(console.log).toHaveBeenLastCalledWith(
       expect.stringMatching(/^Cacheable "test:a": HIT \d+(\.\d+)?ms$/),
     )
 
@@ -179,7 +179,7 @@ describe('Cache operations', () => {
 
     // This should be a miss and take ~10ms
     await hitCache()
-    expect(console.log).lastCalledWith(
+    expect(console.log).toHaveBeenLastCalledWith(
       expect.stringMatching(/^Cacheable "test:a": MISS \d+(\.\d+)?ms$/),
     )
   })

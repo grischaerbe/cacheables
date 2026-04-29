@@ -1,4 +1,4 @@
-import { Cacheable, ConsoleLogger, MemoryBucket } from '../src'
+import { Cacheable, consoleLogger, MemoryBucket } from '../src'
 
 const errorMessage = 'This is an error message.'
 
@@ -80,7 +80,7 @@ describe('Cache operations', () => {
 
     const cache = new Cacheable('test', {
       buckets: [new MemoryBucket()],
-      logger: new ConsoleLogger(),
+      logger: consoleLogger,
     })
 
     const cachedRequest = () => cache.remember(() => mockedApiRequest(1), 'a')
@@ -146,7 +146,7 @@ describe('Cache operations', () => {
 
     const cache = new Cacheable('test', {
       buckets: [new MemoryBucket()],
-      logger: new ConsoleLogger(),
+      logger: consoleLogger,
       policy: 'max-age',
       maxAge: 100,
     })

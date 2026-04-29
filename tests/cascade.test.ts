@@ -12,13 +12,13 @@ class FakeBucket implements IBucket<void> {
 
   readCalls = 0
   metaCalls = 0
-  resolveCalls = 0
+  viewCalls = 0
   writeCalls: WriteCall[] = []
   deleteCalls: string[] = []
   clearCalls = 0
 
   throwOn: Partial<
-    Record<'read' | 'meta' | 'resolve' | 'write' | 'delete' | 'clear', boolean>
+    Record<'read' | 'meta' | 'view' | 'write' | 'delete' | 'clear', boolean>
   > = {}
 
   constructor(seed?: { key: string; value: unknown; meta: BucketEntryMeta }) {
@@ -44,9 +44,9 @@ class FakeBucket implements IBucket<void> {
     return this.store.get(key)?.meta
   }
 
-  async resolve(key: string): Promise<{ view: void } | undefined> {
-    this.resolveCalls += 1
-    if (this.throwOn.resolve) throw new Error('resolve failed')
+  async view(key: string): Promise<{ view: void } | undefined> {
+    this.viewCalls += 1
+    if (this.throwOn.view) throw new Error('view failed')
     return this.store.has(key) ? { view: undefined } : undefined
   }
 

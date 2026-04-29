@@ -112,7 +112,7 @@ interface UrlView {
 
 class FilesystemBucket implements IBucket<UrlView> {
   // read / write / meta / delete / clear …
-  async resolve(key: string): Promise<{ view: UrlView } | undefined> {
+  async view(key: string): Promise<{ view: UrlView } | undefined> {
     /* return { view: { url: pathFor(key) } } when the entry exists */
   }
 }
@@ -127,7 +127,7 @@ const { url } = await cache.resolve(
 )
 ```
 
-`resolve` runs a separate **view-cascade**: the engine probes `meta()` on every layer and, on an L1 hit where no other layer needs back-filling, calls `bucket.resolve()` directly without ever reading the value. A filesystem bucket holding a 5 MB ArrayBuffer never opens the file on the hot path — only the projection (URL) is materialized.
+`resolve` runs a separate **view-cascade**: the engine probes `meta()` on every layer and, on an L1 hit where no other layer needs back-filling, calls `bucket.view()` directly without ever reading the value. A filesystem bucket holding a 5 MB ArrayBuffer never opens the file on the hot path — only the projection (URL) is materialized.
 
 `resolve` and `remember` share the same in-flight registry: a concurrent pair against the same key triggers `resource()` once. `resolve` honors the cache policy — a stale entry will trigger a producer call (or a background revalidation under `stale-while-revalidate`).
 
@@ -160,7 +160,7 @@ interface IBucket<TView = void> {
   read<T>(key: string): Promise<{ value: T } | undefined>
   write<T>(key: string, value: T, meta: BucketEntryMeta): Promise<void>
   meta(key: string): Promise<BucketEntryMeta | undefined>
-  resolve(key: string): Promise<{ view: TView } | undefined>
+  view(key: string): Promise<{ view: TView } | undefined>
   delete(key: string): Promise<void>
   clear(): Promise<void>
 }
@@ -173,7 +173,7 @@ Rules:
 - `meta` MUST be cheap. The engine probes it on every layer for every read. A typical L2 keeps a sidecar (file, table, key/value entry) so probes don't hit the value blob.
 - `read` returns `undefined` for absence and `{ value }` for presence — the wrapper lets buckets store entries whose value is itself `undefined` without colliding with the absence signal.
 - `write` MUST persist `meta.storedAt` verbatim. The engine always supplies a meta; there is no synthesis branch.
-- `resolve` returns `undefined` for absence and `{ view }` for presence. The same wrapper pattern as `read` lets `TView = void` buckets distinguish "entry present, no projection" (`{ view: undefined }`) from "entry absent" (`undefined`). The engine treats absence after a meta-probe hit as a race and heals it by running the producer; absence after a successful cascade write is a strict-mode error and the engine throws.
+- `view` returns `undefined` for absence and `{ view }` for presence. The same wrapper pattern as `read` lets `TView = void` buckets distinguish "entry present, no projection" (`{ view: undefined }`) from "entry absent" (`undefined`). The engine treats absence after a meta-probe hit as a race and heals it by running the producer; absence after a successful cascade write is a strict-mode error and the engine throws.
 - `clear` MUST remove every entry the bucket manages.
 - Any throw from any bucket rejects the surrounding `remember()` / `resolve()` call. There is no per-bucket error suppression.
 
@@ -188,7 +188,7 @@ const cache = new Cacheable('app', {
 ```
 
 - **Read (`cache.remember`)**: probe `meta()` on every layer in parallel; the first layer satisfying the freshness predicate is the hit. Read its value, then back-fill every layer that is missing OR stale, using the hit layer's `storedAt` verbatim.
-- **Read (`cache.resolve`)**: probe `meta()` on every layer; on an L1 hit where no other layer needs back-filling, call `bucket.resolve()` directly without reading the value. When a deeper layer hits or upper layers need refilling, the value is read from the hit layer to fill the others, then L1's view is returned.
+- **Read (`cache.resolve`)**: probe `meta()` on every layer; on an L1 hit where no other layer needs back-filling, call `bucket.view()` directly without reading the value. When a deeper layer hits or upper layers need refilling, the value is read from the hit layer to fill the others, then L1's view is returned.
 - **Miss + `resource()`**: the engine mints a single `{ storedAt }` and writes to every layer in parallel — all layers converge on the same `storedAt`.
 - **Stale L1 + fresh L2** (under `max-age`): the freshness predicate filters per-layer, so the engine returns the fresh L2 value AND refreshes L1 with L2's value and `storedAt` verbatim.
 
@@ -219,7 +219,7 @@ class FileSystemBucket implements IBucket {
   async meta(key: string): Promise<BucketEntryMeta | undefined> {
     /* … */
   }
-  async resolve(key: string): Promise<{ view: void } | undefined> {
+  async view(key: string): Promise<{ view: void } | undefined> {
     /* no projection — return { view: undefined } if the entry exists */
   }
   async delete(key: string): Promise<void> {
@@ -252,7 +252,7 @@ class FilesystemBucket implements IBucket<UrlView> {
   async meta(key: string): Promise<BucketEntryMeta | undefined> {
     /* read the sidecar */
   }
-  async resolve(key: string): Promise<{ view: UrlView } | undefined> {
+  async view(key: string): Promise<{ view: UrlView } | undefined> {
     /* return { view: { url: pathFor(key) } } when the entry exists */
   }
   async delete(key: string): Promise<void> {
@@ -270,7 +270,7 @@ const cache = new Cacheable<UrlView>('images', {
 const { url } = await cache.resolve(() => fetchBytes(remoteUrl), remoteUrl)
 ```
 
-Every bucket passed to the constructor must satisfy `IBucket<UrlView>`, enforced by the compiler. The built-in `MemoryBucket` is `IBucket<void>`, so it can't be used in a `Cacheable` with a non-`void` `TView` — write a bucket whose `resolve(key)` produces the projection you want.
+Every bucket passed to the constructor must satisfy `IBucket<UrlView>`, enforced by the compiler. The built-in `MemoryBucket` is `IBucket<void>`, so it can't be used in a `Cacheable` with a non-`void` `TView` — write a bucket whose `view(key)` produces the projection you want.
 
 ## Cache Policies
 
@@ -507,7 +507,7 @@ Breaking changes:
 What's new:
 
 - **Multilayer storage.** Pass several buckets to compose tiers (e.g. `[memory, filesystem]`); reads cascade L1 → Ln and back-fill missing layers on every hit.
-- **Bucket views.** `Cacheable<TView>` is generic; a bucket can publish a domain-specific projection (a local URL, a presigned link, an `ObjectURL`) via its `resolve()` method, returned by `cache.resolve(...)`. Plain `new Cacheable(namespace, { buckets })` defaults to `Cacheable<void>` and needs no type changes.
+- **Bucket views.** `Cacheable<TView>` is generic; a bucket can publish a domain-specific projection (a local URL, a presigned link, an `ObjectURL`) via its `view()` method, returned by `cache.resolve(...)`. Plain `new Cacheable(namespace, { buckets })` defaults to `Cacheable<void>` and needs no type changes.
 
 ## License
 

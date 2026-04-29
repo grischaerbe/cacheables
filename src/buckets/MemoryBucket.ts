@@ -16,7 +16,7 @@ export class MemoryBucket implements IBucket<void> {
     return this.#store.get(key)?.meta
   }
 
-  async resolve(key: string): Promise<{ view: void } | undefined> {
+  async view(key: string): Promise<{ view: void } | undefined> {
     return this.#store.has(key) ? { view: undefined } : undefined
   }
 

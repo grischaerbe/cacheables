@@ -18,10 +18,10 @@ export interface BucketEntryMeta {
  * `TView` is the bucket's user-facing projection — what
  * `cache.resolve()` returns. A bucket without a meaningful projection
  * (e.g. `MemoryBucket`) sets `TView = void` and returns
- * `{ view: undefined }` from `resolve` when the entry is present.
+ * `{ view: undefined }` from `view()` when the entry is present.
  *
  * The engine maintains two parallel cascade paths: `cache.remember()`
- * uses `read` (value-cascade), `cache.resolve()` uses `resolve`
+ * uses `read` (value-cascade), `cache.resolve()` uses `view`
  * (view-cascade). The view-cascade hot path skips the value read
  * entirely on L1 hits when no other layer needs back-filling.
  *
@@ -32,7 +32,7 @@ export interface BucketEntryMeta {
  *   whose value is itself `undefined` without colliding with the
  *   absence signal.
  * - `write` MUST persist `meta.storedAt` verbatim.
- * - `resolve` returns `undefined` when the entry is absent and
+ * - `view` returns `undefined` when the entry is absent and
  *   `{ view }` when present. The wrapper mirrors `read`: it lets
  *   `TView = void` buckets distinguish "entry present, no projection"
  *   (`{ view: undefined }`) from "entry absent" (`undefined`). The
@@ -47,7 +47,7 @@ export interface IBucket<TView = void> {
   read<T>(key: string): Promise<{ value: T } | undefined>
   write<T>(key: string, value: T, meta: BucketEntryMeta): Promise<void>
   meta(key: string): Promise<BucketEntryMeta | undefined>
-  resolve(key: string): Promise<{ view: TView } | undefined>
+  view(key: string): Promise<{ view: TView } | undefined>
   delete(key: string): Promise<void>
   clear(): Promise<void>
 }

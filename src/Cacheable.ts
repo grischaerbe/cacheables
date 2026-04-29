@@ -8,7 +8,7 @@ import type {
 
 type FreshnessPredicate = (meta: BucketEntryMeta) => boolean
 
-type CascadeRead<R> = (
+type CascadeFn<R> = (
   fullKey: string,
   isFresh?: FreshnessPredicate,
 ) => Promise<{ result: R; meta: BucketEntryMeta } | undefined>
@@ -46,6 +46,10 @@ export class Cacheable<TView = void> {
     return `${this.#namespace}:${key}`
   }
 
+  #dedupKey(key: string, type: 'value' | 'view'): string {
+    return `${this.#namespace}:${key}:${type}`
+  }
+
   async delete(key: string): Promise<void> {
     const fullKey = this.#fullKey(key)
     await Promise.all(this.#buckets.map((b) => b.delete(fullKey)))
@@ -62,11 +66,12 @@ export class Cacheable<TView = void> {
     const start = logger ? performance.now() : 0
 
     const fullKey = this.#fullKey(key)
+    const dedupKey = this.#dedupKey(key, 'value')
     const { result, hit } = await this.#runPolicy<T, T>(
       resource,
       fullKey,
-      `${fullKey}:value`,
-      (k, isFresh) => this.#cascadeReadValue<T>(k, isFresh),
+      dedupKey,
+      (k, isFresh) => this.#cascadeRead<T>(k, isFresh),
       async (value) => value,
     )
 
@@ -83,11 +88,12 @@ export class Cacheable<TView = void> {
     const start = logger ? performance.now() : 0
 
     const fullKey = this.#fullKey(key)
+    const dedupKey = this.#dedupKey(key, 'view')
     const { result, hit } = await this.#runPolicy<T, TView>(
       resource,
       fullKey,
-      `${fullKey}:view`,
-      (k, isFresh) => this.#cascadeReadView(k, isFresh),
+      dedupKey,
+      (k, isFresh) => this.#cascadeResolve(k, isFresh),
       () => this.#viewFromL1(fullKey),
     )
 
@@ -100,7 +106,7 @@ export class Cacheable<TView = void> {
   }
 
   async #viewFromL1(fullKey: string): Promise<TView> {
-    const wrapped = await this.#buckets[0]!.resolve(fullKey)
+    const wrapped = await this.#buckets[0]!.view(fullKey)
     if (wrapped === undefined) {
       throw new Error(
         `Cacheable: L1 bucket returned no view for "${fullKey}" after a successful cascade write`,
@@ -113,13 +119,13 @@ export class Cacheable<TView = void> {
     resource: () => Promise<T>,
     fullKey: string,
     dedupKey: string,
-    cascadeRead: CascadeRead<R>,
+    cascadeFn: CascadeFn<R>,
     fromValue: (value: T) => Promise<R>,
   ): Promise<{ result: R; hit: boolean }> {
     switch (this.#policy) {
       case 'cache-only': {
         return this.#dedupPolicy(dedupKey, async () => {
-          const cached = await cascadeRead(fullKey)
+          const cached = await cascadeFn(fullKey)
           if (cached) return { result: cached.result, hit: true }
           const value = await this.#produceAndWrite(fullKey, resource)
           return { result: await fromValue(value), hit: false }
@@ -139,7 +145,7 @@ export class Cacheable<TView = void> {
       case 'max-age': {
         const maxAge = this.#maxAge as number
         return this.#dedupPolicy(dedupKey, async () => {
-          const cached = await cascadeRead(
+          const cached = await cascadeFn(
             fullKey,
             (m) => Date.now() - m.storedAt <= maxAge,
           )
@@ -149,7 +155,7 @@ export class Cacheable<TView = void> {
         })
       }
       case 'stale-while-revalidate': {
-        const cached = await cascadeRead(fullKey)
+        const cached = await cascadeFn(fullKey)
         const maxAge = this.#maxAge
         const isStale =
           !cached ||
@@ -217,7 +223,7 @@ export class Cacheable<TView = void> {
     )
   }
 
-  async #cascadeReadValue<T>(
+  async #cascadeRead<T>(
     fullKey: string,
     isFresh?: FreshnessPredicate,
   ): Promise<{ result: T; meta: BucketEntryMeta } | undefined> {
@@ -235,7 +241,7 @@ export class Cacheable<TView = void> {
     return { result: value, meta: hitMeta }
   }
 
-  async #cascadeReadView(
+  async #cascadeResolve(
     fullKey: string,
     isFresh?: FreshnessPredicate,
   ): Promise<{ result: TView; meta: BucketEntryMeta } | undefined> {
@@ -250,7 +256,7 @@ export class Cacheable<TView = void> {
     )
 
     if (!needsFill) {
-      const wrapped = await this.#buckets[0]!.resolve(fullKey)
+      const wrapped = await this.#buckets[0]!.view(fullKey)
       if (wrapped === undefined) return undefined
       return { result: wrapped.view, meta: hitMeta }
     }
@@ -266,7 +272,7 @@ export class Cacheable<TView = void> {
       hitIdx,
       isFresh,
     )
-    const wrapped = await this.#buckets[0]!.resolve(fullKey)
+    const wrapped = await this.#buckets[0]!.view(fullKey)
     if (wrapped === undefined) return undefined
     return { result: wrapped.view, meta: hitMeta }
   }

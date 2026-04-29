@@ -10,6 +10,9 @@
     "README.md",
     "LICENSE.md"
   ],
+  "engines": {
+    "node": ">=18"
+  },
   "exports": {
     ".": {
       "types": "./dist/mjs/index.d.ts",

@@ -177,7 +177,7 @@ export class Cacheable<TView = void> {
     fullKey: string,
     resource: () => Promise<T>,
   ): Promise<T> {
-    return this.#dedupInto(this.#producerInflight, fullKey, async () => {
+    return this.#dedup(this.#producerInflight, fullKey, async () => {
       const value = await resource()
       await this.#cascadeWrite(fullKey, value)
       return value
@@ -185,10 +185,10 @@ export class Cacheable<TView = void> {
   }
 
   #dedupPolicy<T>(dedupKey: string, run: () => Promise<T>): Promise<T> {
-    return this.#dedupInto(this.#policyInflight, dedupKey, run)
+    return this.#dedup(this.#policyInflight, dedupKey, run)
   }
 
-  #dedupInto<T>(
+  #dedup<T>(
     inflight: Map<string, Promise<unknown>>,
     key: string,
     run: () => Promise<T>,

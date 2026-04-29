@@ -22,19 +22,17 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 describe('Cache operations', () => {
   it('Returns correct values', async () => {
-    const cache = new Cacheable('test', {
-      buckets: [new MemoryBucket()],
-    })
+    const bucket = new MemoryBucket()
+    const cache = new Cacheable('test', { buckets: [bucket] })
     const value = 10
     const cachedValue = await cache.remember(() => mockedApiRequest(value), 'a')
-    expect(await cache.meta('a')).toBeDefined()
+    expect(await bucket.meta('test:a')).toBeDefined()
     expect(cachedValue).toEqual(value)
   })
 
   it('Stores multiple caches', async () => {
-    const cache = new Cacheable('test', {
-      buckets: [new MemoryBucket()],
-    })
+    const bucket = new MemoryBucket()
+    const cache = new Cacheable('test', { buckets: [bucket] })
 
     const valueA = 10
     const valueB = 20
@@ -48,35 +46,33 @@ describe('Cache operations', () => {
       'b',
     )
 
-    expect(await cache.meta('a')).toBeDefined()
-    expect(await cache.meta('b')).toBeDefined()
+    expect(await bucket.meta('test:a')).toBeDefined()
+    expect(await bucket.meta('test:b')).toBeDefined()
     expect([cachedValueA, cachedValueB]).toEqual([valueA, valueB])
   })
 
   it('Deletes values', async () => {
-    const cache = new Cacheable('test', {
-      buckets: [new MemoryBucket()],
-    })
+    const bucket = new MemoryBucket()
+    const cache = new Cacheable('test', { buckets: [bucket] })
 
     const value = 10
     await cache.remember(() => mockedApiRequest(value), 'a')
 
-    expect(await cache.meta('a')).toBeDefined()
+    expect(await bucket.meta('test:a')).toBeDefined()
     await cache.delete('a')
-    expect(await cache.meta('a')).toBeUndefined()
+    expect(await bucket.meta('test:a')).toBeUndefined()
   })
 
   it('Clears the cache', async () => {
-    const cache = new Cacheable('test', {
-      buckets: [new MemoryBucket()],
-    })
+    const bucket = new MemoryBucket()
+    const cache = new Cacheable('test', { buckets: [bucket] })
 
     const value = 10
     await cache.remember(() => mockedApiRequest(value), 'a')
 
-    expect(await cache.meta('a')).toBeDefined()
+    expect(await bucket.meta('test:a')).toBeDefined()
     await cache.clear()
-    expect(await cache.meta('a')).toBeUndefined()
+    expect(await bucket.meta('test:a')).toBeUndefined()
   })
 
   it('Creates proper keys', () => {

@@ -9,7 +9,7 @@ A small, typed cache with composable storage buckets and a handful of cache poli
 - **Wrap any async call** with `cache.remember(...)` — `remember` is both getter and setter.
 - **Multilayer storage**: stack a fast in-memory L1 with any L2 you write (filesystem, Redis, S3, …). Reads cascade L1 → Ln; on any hit, missing layers are back-filled.
 - **Five cache policies**, including `stale-while-revalidate`, with concurrency-safe deduplication where it makes sense.
-- **Fully typed**, with a generic `TMeta` parameter for sidecar metadata (etag, ttl, version, …).
+- **Fully typed**, with a generic `TView` parameter for the bucket's user-facing projection (a URL from a filesystem bucket, a presigned link from S3, …) surfaced via `cache.resolve(...)`.
 - **Required namespace prefix** so multiple instances can share a bucket without collisions.
 - Helper to build cache keys.
 - Works in browser and Node.js. **No dependencies.**
@@ -25,11 +25,10 @@ cache.remember(() => fetch('https://some-url.com/api'), 'key')
 - [Installation](#installation)
 - [Usage](#usage)
 - [API](#api)
-  - [new Cacheable(namespace, options)](#new-cacheablenamespace-options-cacheabletmeta)
+  - [new Cacheable(namespace, options)](#new-cacheablenamespace-options-cacheabletview)
   - [cache.remember(resource, key)](#cacherememberresource-key-promiset)
-  - [cache.resolve(resource, key)](#cacheresolveresource-key-promisetmeta)
+  - [cache.resolve(resource, key)](#cacheresolveresource-key-promisetview)
   - [cache.delete(key) / cache.clear()](#cachedeletekey-promisevoid--cacheclear-promisevoid)
-  - [cache.meta(key)](#cachemetakey-promisetmeta--undefined)
   - [Cacheable.key(...args)](#cacheablekeyargs-string)
 - [Buckets](#buckets)
 - [Cache Policies](#cache-policies)
@@ -76,16 +75,16 @@ await getWeather() // hit — cached
 
 ## API
 
-### `new Cacheable(namespace, options): Cacheable<TMeta>`
+### `new Cacheable(namespace, options): Cacheable<TView>`
 
 ```ts
-new Cacheable<TMeta extends IBaseMeta = IBaseMeta>(
+new Cacheable<TView = void>(
   namespace: string,
-  options: CacheableOptions<TMeta>,
+  options: CacheableOptions<TView>,
 )
 
-type CacheableOptions<TMeta extends IBaseMeta = IBaseMeta> = {
-  buckets: IBucket<TMeta>[] // REQUIRED, L1 first
+type CacheableOptions<TView = void> = {
+  buckets: IBucket<TView>[] // REQUIRED, L1 first
   logger?: ILogger // default: undefined (no logging)
 } & (
   | { policy?: 'cache-only' } // default
@@ -102,16 +101,23 @@ type CacheableOptions<TMeta extends IBaseMeta = IBaseMeta> = {
 
 Resolves to the cached value if present (subject to policy); otherwise calls `resource()` and writes to every bucket.
 
-### `cache.resolve(resource, key): Promise<TMeta>`
+### `cache.resolve(resource, key): Promise<TView>`
 
-Same fresh-or-fetch behavior as `remember`, but returns the bucket's meta instead of the producer's value. Useful when the projection a bucket exposes through `TMeta` is what callers actually need — for example, a filesystem bucket that fetches and stores a remote image as bytes, then exposes a local URL on its meta:
+Same fresh-or-fetch behavior as `remember`, but returns the L1 bucket's view instead of the producer's value. Use this when the bucket produces a domain-specific projection that callers actually need — a filesystem bucket exposing a local URL after caching the bytes, a CDN bucket returning a presigned link, an IndexedDB bucket returning an `ObjectURL`:
 
 ```ts
-interface FilesystemMeta extends IBaseMeta {
+interface UrlView {
   url: string
 }
 
-const cache = new Cacheable<FilesystemMeta>('images', {
+class FilesystemBucket implements IBucket<UrlView> {
+  // read / write / meta / delete / clear …
+  async view(key: string): Promise<{ view: UrlView } | undefined> {
+    /* return { view: { url: pathFor(key) } } when the entry exists */
+  }
+}
+
+const cache = new Cacheable<UrlView>('images', {
   buckets: [new FilesystemBucket()],
 })
 
@@ -121,15 +127,15 @@ const { url } = await cache.resolve(
 )
 ```
 
-`resolve` and `remember` share the same in-flight registry: a concurrent pair against the same key triggers `resource()` once and both observers see the same `storedAt`. Unlike `cache.meta(key)`, `resolve` honors the cache policy — a stale entry will trigger a producer call (or a background revalidation under `stale-while-revalidate`).
+`resolve` runs a separate **view-cascade**: the engine probes `meta()` on every layer and, on an L1 hit where no other layer needs back-filling, calls `bucket.view()` directly without ever reading the value. A filesystem bucket holding a 5 MB ArrayBuffer never opens the file on the hot path — only the projection (URL) is materialized.
+
+`resolve` and `remember` share the same in-flight registry: a concurrent pair against the same key triggers `resource()` once. `resolve` honors the cache policy — a stale entry will trigger a producer call (or a background revalidation under `stale-while-revalidate`).
+
+For buckets without a meaningful projection (e.g. the built-in `MemoryBucket`), `TView = void` and `cache.resolve()` resolves to `undefined`. Use `cache.remember()` instead in that case.
 
 ### `cache.delete(key): Promise<void>` / `cache.clear(): Promise<void>`
 
 `delete` removes the entry from every bucket. `clear` wipes every bucket and the in-flight registry. Both are async — `await` them.
-
-### `cache.meta(key): Promise<TMeta | undefined>`
-
-Returns the meta from the highest-priority layer that has the key, or `undefined` if no layer has it. **Bypasses the policy** — it returns whatever the cache holds, fresh or stale. Reach for `cache.resolve(...)` instead when you want a meta that has been refreshed against the policy; reach for `cache.meta(key)` for raw inspection (debugging, eviction logic, presence checks).
 
 ### `Cacheable.key(...args): string`
 
@@ -146,27 +152,30 @@ A bucket is a single storage tier — memory, Redis, disk, S3, anything you can 
 ### `IBucket` contract
 
 ```ts
-interface IBaseMeta {
+interface BucketEntryMeta {
   storedAt: number
 }
 
-interface IBucket<TMeta extends IBaseMeta = IBaseMeta> {
+interface IBucket<TView = void> {
   read<T>(key: string): Promise<{ value: T } | undefined>
-  write<T>(key: string, value: T, meta?: TMeta): Promise<void>
-  meta(key: string): Promise<TMeta | undefined>
+  write<T>(key: string, value: T, meta: BucketEntryMeta): Promise<void>
+  meta(key: string): Promise<BucketEntryMeta | undefined>
+  view(key: string): Promise<{ view: TView } | undefined>
   delete(key: string): Promise<void>
   clear(): Promise<void>
 }
 ```
 
+The engine carries only `BucketEntryMeta` (i.e. `storedAt`) between buckets. `TView` is what the bucket exposes through `cache.resolve(...)` — it never crosses bucket boundaries.
+
 Rules:
 
 - `meta` MUST be cheap. The engine probes it on every layer for every read. A typical L2 keeps a sidecar (file, table, key/value entry) so probes don't hit the value blob.
 - `read` returns `undefined` for absence and `{ value }` for presence — the wrapper lets buckets store entries whose value is itself `undefined` without colliding with the absence signal.
-- When `write` receives a `meta`, the bucket MUST persist `meta.storedAt` verbatim (other fields MAY be transformed). This keeps `max-age` semantics coherent across layers.
-- When `write` is called with no `meta`, the bucket MUST synthesize one with `storedAt: Date.now()`.
+- `write` MUST persist `meta.storedAt` verbatim. The engine always supplies a meta; there is no synthesis branch.
+- `view` returns `undefined` for absence and `{ view }` for presence. The same wrapper pattern as `read` lets `TView = void` buckets distinguish "entry present, no projection" (`{ view: undefined }`) from "entry absent" (`undefined`). The engine treats absence after a meta-probe hit as a race and heals it by running the producer; absence after a successful cascade write is a strict-mode error and the engine throws.
 - `clear` MUST remove every entry the bucket manages.
-- Any throw from any bucket rejects the surrounding `remember()` call. There is no per-bucket error suppression.
+- Any throw from any bucket rejects the surrounding `remember()` / `resolve()` call. There is no per-bucket error suppression.
 
 ### Cascade behavior
 
@@ -178,9 +187,10 @@ const cache = new Cacheable('app', {
 })
 ```
 
-- **Read**: probe `meta()` on every layer in parallel; the first layer satisfying the freshness predicate is the hit. Read its value, then back-fill every layer above and below that is still missing the key, using the hit layer's meta — `storedAt` is preserved everywhere.
-- **Miss + `resource()`**: write to L1 with no meta (L1 synthesizes its own), read meta back from L1, then write to L2..Ln with that exact meta. All layers converge on the same `storedAt`.
-- **Stale L1 + fresh L2** (under `max-age`): the freshness predicate filters per-layer, so the engine returns the fresh L2 value and back-fills L1.
+- **Read (`cache.remember`)**: probe `meta()` on every layer in parallel; the first layer satisfying the freshness predicate is the hit. Read its value, then back-fill every layer that is missing OR stale, using the hit layer's `storedAt` verbatim.
+- **Read (`cache.resolve`)**: probe `meta()` on every layer; on an L1 hit where no other layer needs back-filling, call `bucket.view()` directly without reading the value. When a deeper layer hits or upper layers need refilling, the value is read from the hit layer to fill the others, then L1's view is returned.
+- **Miss + `resource()`**: the engine mints a single `{ storedAt }` and writes to every layer in parallel — all layers converge on the same `storedAt`.
+- **Stale L1 + fresh L2** (under `max-age`): the freshness predicate filters per-layer, so the engine returns the fresh L2 value AND refreshes L1 with L2's value and `storedAt` verbatim.
 
 ### Built-in `MemoryBucket`
 
@@ -197,17 +207,20 @@ const cache = new Cacheable('app', { buckets: [new MemoryBucket()] })
 Implement `IBucket`. The contract is small enough that filesystem, Redis, IndexedDB, or S3 buckets are easy to add.
 
 ```ts
-import type { IBucket, IBaseMeta } from 'cacheables'
+import type { IBucket, BucketEntryMeta } from 'cacheables'
 
 class FileSystemBucket implements IBucket {
   async read<T>(key: string): Promise<{ value: T } | undefined> {
     /* … */
   }
-  async write<T>(key: string, value: T, meta?: IBaseMeta): Promise<void> {
+  async write<T>(key: string, value: T, meta: BucketEntryMeta): Promise<void> {
+    /* persist the value AND meta.storedAt verbatim */
+  }
+  async meta(key: string): Promise<BucketEntryMeta | undefined> {
     /* … */
   }
-  async meta(key: string): Promise<IBaseMeta | undefined> {
-    /* … */
+  async view(key: string): Promise<{ view: void } | undefined> {
+    /* no projection — return { view: undefined } if the entry exists */
   }
   async delete(key: string): Promise<void> {
     /* … */
@@ -218,27 +231,46 @@ class FileSystemBucket implements IBucket {
 }
 ```
 
-### Typed metadata (`TMeta`)
+### Bucket views (`TView`)
 
-`Cacheable` is generic in `TMeta`. Extend `IBaseMeta` to carry sidecar fields:
+`IBucket<TView>` is generic in `TView` — the projection the bucket exposes through `cache.resolve(...)`. A filesystem bucket caching remote bytes can publish the local URL it stored them at:
 
 ```ts
-import { Cacheable, type IBaseMeta, type IBucket } from 'cacheables'
+import { Cacheable, type IBucket, type BucketEntryMeta } from 'cacheables'
 
-interface ETagMeta extends IBaseMeta {
-  etag: string
+interface UrlView {
+  url: string
 }
 
-class ETagBucket implements IBucket<ETagMeta> {
-  // read / write / meta / delete / clear …
+class FilesystemBucket implements IBucket<UrlView> {
+  async read<T>(key: string): Promise<{ value: T } | undefined> {
+    /* … */
+  }
+  async write<T>(key: string, value: T, meta: BucketEntryMeta): Promise<void> {
+    /* persist value to disk under a deterministic path */
+  }
+  async meta(key: string): Promise<BucketEntryMeta | undefined> {
+    /* read the sidecar */
+  }
+  async view(key: string): Promise<{ view: UrlView } | undefined> {
+    /* return { view: { url: pathFor(key) } } when the entry exists */
+  }
+  async delete(key: string): Promise<void> {
+    /* … */
+  }
+  async clear(): Promise<void> {
+    /* … */
+  }
 }
 
-const cache = new Cacheable<ETagMeta>('app', { buckets: [new ETagBucket()] })
+const cache = new Cacheable<UrlView>('images', {
+  buckets: [new FilesystemBucket()],
+})
 
-const meta = await cache.meta('user:42') // typed as ETagMeta | undefined
+const { url } = await cache.resolve(() => fetchBytes(remoteUrl), remoteUrl)
 ```
 
-Every bucket passed to the constructor must satisfy `IBucket<ETagMeta>`, enforced by the compiler. The built-in `MemoryBucket` only implements `IBucket<IBaseMeta>`, so it can't be used in a `Cacheable` instance with a custom `TMeta` — write a custom bucket (or wrap `MemoryBucket`) when you need extended metadata.
+Every bucket passed to the constructor must satisfy `IBucket<UrlView>`, enforced by the compiler. The built-in `MemoryBucket` is `IBucket<void>`, so it can't be used in a `Cacheable` with a non-`void` `TView` — write a bucket whose `view(key)` produces the projection you want.
 
 ## Cache Policies
 
@@ -425,7 +457,7 @@ const tenantA = new Cacheable('tenant-a', { buckets: [bucket] })
 const tenantB = new Cacheable('tenant-b', { buckets: [bucket] })
 ```
 
-`delete` and `meta` respect the namespace; `clear()` wipes the entire underlying bucket — it has no notion of which keys belong to which namespace. Reach for `clear()` only when you mean _everything_.
+`delete` respects the namespace; `clear()` wipes the entire underlying bucket — it has no notion of which keys belong to which namespace. Reach for `clear()` only when you mean _everything_.
 
 ## Migrating from v2 → v3
 
@@ -467,7 +499,7 @@ Breaking changes:
 - **`enabled` option removed.** If you need to bypass the cache, call `resource()` directly instead of `cache.remember(...)`.
 - **`keys()` removed.** Enumerating heterogeneous async layers (some non-enumerable, like CDNs) has no single sensible semantic.
 - **`delete` and `clear` are async.** They now return `Promise<void>` — add `await`.
-- **`isCached` removed.** Use `cache.meta(key)` instead — it returns `undefined` when the key is absent and the meta object otherwise.
+- **`isCached` removed.** v3 has no public presence-check API; if you need one, query your bucket directly (e.g. `await bucket.meta(fullKey)`).
 - **`log` / `logTiming` replaced by `logger`.** Pass `new ConsoleLogger()` to restore the previous default-on logging, or implement `ILogger` to route messages elsewhere. Each `remember()` call emits a single formatted message (`Cacheable "<key>": HIT|MISS <Xms>`) instead of `console.time` / `timeEnd`.
 - **Options types reshaped.** v2's `CacheOptions` (constructor) and `CacheableOptions` (per-call) are gone. v3's constructor options type is `CacheableOptions` — same name as v2's per-call type, completely different shape (it now carries `buckets`, `policy`, and `logger`; `namespace` is the constructor's first positional argument).
 - **Buckets can throw.** Any throw from any bucket rejects `remember()`. v2's in-memory store couldn't fail, so this is a new error surface to be aware of once you wire up a custom bucket.
@@ -475,7 +507,7 @@ Breaking changes:
 What's new:
 
 - **Multilayer storage.** Pass several buckets to compose tiers (e.g. `[memory, filesystem]`); reads cascade L1 → Ln and back-fill missing layers on every hit.
-- **Typed sidecar metadata.** `Cacheable<TMeta>` is generic; bucket implementations can persist fields like `etag` or `ttl` and `cache.meta(key)` returns them typed. Plain `new Cacheable(namespace, { buckets })` defaults to `Cacheable<IBaseMeta>` and needs no type changes.
+- **Bucket views.** `Cacheable<TView>` is generic; a bucket can publish a domain-specific projection (a local URL, a presigned link, an `ObjectURL`) via its `view()` method, returned by `cache.resolve(...)`. Plain `new Cacheable(namespace, { buckets })` defaults to `Cacheable<void>` and needs no type changes.
 
 ## License
 

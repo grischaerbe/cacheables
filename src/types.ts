@@ -1,16 +1,29 @@
 /**
- * Base shape for all bucket metadata. Buckets MAY extend this with
- * additional sidecar fields (etag, ttl, version, etc.) provided their
- * extension is captured by the `TMeta` generic of `Cacheable`.
+ * Engine-internal probe shape. The engine mints a `BucketEntryMeta`
+ * for every cascade write and reads it back via `bucket.meta(key)` to
+ * decide hits and apply freshness predicates. Bucket implementers
+ * type their `meta()` method against this shape; consumers of
+ * `Cacheable` never see it.
  */
-export interface IBaseMeta {
+export interface BucketEntryMeta {
   storedAt: number
 }
 
 /**
  * Bucket contract. Buckets back the layers (L1, L2, ...) of a
  * `Cacheable` instance. Reads cascade L1 → Ln; on any hit the engine
- * fills missing layers with the hit value preserving `meta.storedAt`.
+ * fills missing or stale layers with the hit value preserving
+ * `meta.storedAt`.
+ *
+ * `TView` is the bucket's user-facing projection — what
+ * `cache.resolve()` returns. A bucket without a meaningful projection
+ * (e.g. `MemoryBucket`) sets `TView = void` and returns
+ * `{ view: undefined }` from `view()` when the entry is present.
+ *
+ * The engine maintains two parallel cascade paths: `cache.remember()`
+ * uses `read` (value-cascade), `cache.resolve()` uses `view`
+ * (view-cascade). The view-cascade hot path skips the value read
+ * entirely on L1 hits when no other layer needs back-filling.
  *
  * Contracts:
  * - `meta` MUST be cheap (engine probes it on every layer per read).
@@ -18,19 +31,23 @@ export interface IBaseMeta {
  *   when present — the wrapper exists so buckets can store entries
  *   whose value is itself `undefined` without colliding with the
  *   absence signal.
- * - When `write` receives a `meta`, the bucket MUST persist
- *   `meta.storedAt` verbatim. Other fields MAY be transformed.
- * - When `write` receives no `meta`, the bucket MUST synthesize one
- *   with `storedAt: Date.now()` (and any other `TMeta` fields it knows
- *   how to populate).
+ * - `write` MUST persist `meta.storedAt` verbatim.
+ * - `view` returns `undefined` when the entry is absent and
+ *   `{ view }` when present. The wrapper mirrors `read`: it lets
+ *   `TView = void` buckets distinguish "entry present, no projection"
+ *   (`{ view: undefined }`) from "entry absent" (`undefined`). The
+ *   engine treats absence after a meta-probe hit as a race and heals
+ *   it like the read path; absence after a successful cascade
+ *   write/fill is a strict-mode error and the engine throws.
  * - `clear` MUST remove every entry the bucket manages.
- * - All five methods MAY throw on infrastructure errors. The engine
+ * - All six methods MAY throw on infrastructure errors. The engine
  *   treats throws as fatal (strict mode).
  */
-export interface IBucket<TMeta extends IBaseMeta = IBaseMeta> {
+export interface IBucket<TView = void> {
   read<T>(key: string): Promise<{ value: T } | undefined>
-  write<T>(key: string, value: T, meta?: TMeta): Promise<void>
-  meta(key: string): Promise<TMeta | undefined>
+  write<T>(key: string, value: T, meta: BucketEntryMeta): Promise<void>
+  meta(key: string): Promise<BucketEntryMeta | undefined>
+  view(key: string): Promise<{ view: TView } | undefined>
   delete(key: string): Promise<void>
   clear(): Promise<void>
 }
@@ -100,13 +117,12 @@ export type Policy =
 export type CacheOptions = CacheOptionsBase & PolicyOptions
 
 /**
- * Constructor options for `Cacheable<TMeta>`. The namespace is passed
+ * Constructor options for `Cacheable<TView>`. The namespace is passed
  * as a positional argument; this bag carries everything else.
  *
  * `buckets` is required; the array is L1 first.
  */
-export type CacheableOptions<TMeta extends IBaseMeta = IBaseMeta> =
-  CacheOptionsBase &
-    PolicyOptions & {
-      buckets: IBucket<TMeta>[]
-    }
+export type CacheableOptions<TView = void> = CacheOptionsBase &
+  PolicyOptions & {
+    buckets: IBucket<TView>[]
+  }

@@ -1,8 +1,8 @@
-import { CacheableOptions, Cacheables } from '../src'
+import { Cacheable, consoleLogger, MemoryBucket } from '../src'
 
 const errorMessage = 'This is an error message.'
 
-const mockedApiRequest = <T extends any>(
+const mockedApiRequest = <T>(
   value: T,
   duration = 0,
   reject = false,
@@ -22,96 +22,89 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 describe('Cache operations', () => {
   it('Returns correct values', async () => {
-    const cache = new Cacheables()
+    const bucket = new MemoryBucket()
+    const cache = new Cacheable('test', { buckets: [bucket] })
     const value = 10
-    const cachedValue = await cache.cacheable(
-      () => mockedApiRequest(value),
-      'a',
-    )
-    expect(cache.isCached('a')).toEqual(true)
-    expect(cache.keys()).toEqual(['a'])
+    const cachedValue = await cache.remember(() => mockedApiRequest(value), 'a')
+    expect(await bucket.meta('test:a')).toBeDefined()
     expect(cachedValue).toEqual(value)
   })
 
   it('Stores multiple caches', async () => {
-    const cache = new Cacheables()
+    const bucket = new MemoryBucket()
+    const cache = new Cacheable('test', { buckets: [bucket] })
 
     const valueA = 10
     const valueB = 20
 
-    const cachedValueA = await cache.cacheable(
+    const cachedValueA = await cache.remember(
       () => mockedApiRequest(valueA),
       'a',
     )
-    const cachedValueB = await cache.cacheable(
+    const cachedValueB = await cache.remember(
       () => mockedApiRequest(valueB),
       'b',
     )
 
-    expect(cache.keys().sort()).toEqual(['a', 'b'].sort())
+    expect(await bucket.meta('test:a')).toBeDefined()
+    expect(await bucket.meta('test:b')).toBeDefined()
     expect([cachedValueA, cachedValueB]).toEqual([valueA, valueB])
   })
 
   it('Deletes values', async () => {
-    const cache = new Cacheables()
+    const bucket = new MemoryBucket()
+    const cache = new Cacheable('test', { buckets: [bucket] })
 
     const value = 10
-    await cache.cacheable(() => mockedApiRequest(value), 'a')
+    await cache.remember(() => mockedApiRequest(value), 'a')
 
-    expect(cache.isCached('a')).toEqual(true)
-    cache.delete('a')
-    expect(cache.isCached('a')).toEqual(false)
+    expect(await bucket.meta('test:a')).toBeDefined()
+    await cache.delete('a')
+    expect(await bucket.meta('test:a')).toBeUndefined()
   })
 
   it('Clears the cache', async () => {
-    const cache = new Cacheables()
+    const bucket = new MemoryBucket()
+    const cache = new Cacheable('test', { buckets: [bucket] })
 
     const value = 10
-    await cache.cacheable(() => mockedApiRequest(value), 'a')
+    await cache.remember(() => mockedApiRequest(value), 'a')
 
-    expect(cache.isCached('a')).toEqual(true)
-    cache.clear()
-    expect(cache.isCached('a')).toEqual(false)
-  })
-
-  it('Creates proper keys', () => {
-    const key = Cacheables.key('aaa', 'bbb', 'ccc', 'ddd', 10, 20)
-    expect(key).toEqual('aaa:bbb:ccc:ddd:10:20')
-  })
-
-  it('Returns correctly if disabled', async () => {
-    const cache = new Cacheables({
-      enabled: false,
-    })
-
-    const value = 10
-    const uncachedValue = await cache.cacheable(
-      () => mockedApiRequest(value),
-      'a',
-    )
-
-    expect(uncachedValue).toEqual(value)
+    expect(await bucket.meta('test:a')).toBeDefined()
+    await cache.clear()
+    expect(await bucket.meta('test:a')).toBeUndefined()
   })
 
   it('Logs correctly', async () => {
-    console.log = jest.fn()
+    console.log = vi.fn()
 
-    const cache = new Cacheables({
-      log: true,
-      enabled: false,
+    const cache = new Cacheable('test', {
+      buckets: [new MemoryBucket()],
+      logger: consoleLogger,
     })
 
-    const cachedRequest = () => cache.cacheable(() => mockedApiRequest(1), 'a')
+    const cachedRequest = () => cache.remember(() => mockedApiRequest(1), 'a')
 
     await cachedRequest()
-    expect(console.log).lastCalledWith('CACHE: Caching disabled')
-    cache.enabled = true
+    expect(console.log).toHaveBeenLastCalledWith(
+      expect.stringMatching(/^Cacheable "test:a": MISS \d+(\.\d+)?ms$/),
+    )
 
     await cachedRequest()
-    expect(console.log).lastCalledWith('Cacheable "a": hits: 0')
+    expect(console.log).toHaveBeenLastCalledWith(
+      expect.stringMatching(/^Cacheable "test:a": HIT \d+(\.\d+)?ms$/),
+    )
 
     await cachedRequest()
-    expect(console.log).lastCalledWith('Cacheable "a": hits: 1')
+    expect(console.log).toHaveBeenLastCalledWith(
+      expect.stringMatching(/^Cacheable "test:a": HIT \d+(\.\d+)?ms$/),
+    )
+  })
+
+  it('Throws when constructed without buckets', () => {
+    expect(() => new Cacheable('test', { buckets: [] })).toThrow(
+      'At least one bucket is required',
+    )
   })
 
   /**
@@ -122,13 +115,14 @@ describe('Cache operations', () => {
    * Assuming the time starts at 0
    */
   it('Handles race conditions correctly', async () => {
-    const cache = new Cacheables()
+    const cache = new Cacheable('test', {
+      buckets: [new MemoryBucket()],
+      policy: 'max-age',
+      maxAge: 100,
+    })
 
     const racingCache = (v: any) =>
-      cache.cacheable(() => mockedApiRequest(v, 50), 'a', {
-        cachePolicy: 'max-age',
-        maxAge: 100,
-      })
+      cache.remember(() => mockedApiRequest(v, 50), 'a')
 
     // Create a cache that times out at 100 and resolves at 50
     const a = await racingCache('a')
@@ -148,53 +142,65 @@ describe('Cache operations', () => {
   })
 
   it('Handles multiple calls correctly', async () => {
-    console.log = jest.fn()
+    console.log = vi.fn()
 
-    const cache = new Cacheables({
-      log: true,
+    const cache = new Cacheable('test', {
+      buckets: [new MemoryBucket()],
+      logger: consoleLogger,
+      policy: 'max-age',
+      maxAge: 100,
     })
 
     const hitCache = async () => {
-      await cache.cacheable(() => mockedApiRequest(0, 10), 'a', {
-        cachePolicy: 'max-age',
-        maxAge: 100,
-      })
+      await cache.remember(() => mockedApiRequest(0, 10), 'a')
     }
 
     // This should be a miss and take ~10ms
     await hitCache()
-    expect(console.log).lastCalledWith('Cacheable "a": hits: 0')
+    expect(console.log).toHaveBeenLastCalledWith(
+      expect.stringMatching(/^Cacheable "test:a": MISS \d+(\.\d+)?ms$/),
+    )
 
     // This should be a hit and take ~0ms
     await hitCache()
-    expect(console.log).lastCalledWith('Cacheable "a": hits: 1')
+    expect(console.log).toHaveBeenLastCalledWith(
+      expect.stringMatching(/^Cacheable "test:a": HIT \d+(\.\d+)?ms$/),
+    )
 
     await wait(60)
 
     // This should be a hit and take ~0ms
     await hitCache()
-    expect(console.log).lastCalledWith('Cacheable "a": hits: 2')
+    expect(console.log).toHaveBeenLastCalledWith(
+      expect.stringMatching(/^Cacheable "test:a": HIT \d+(\.\d+)?ms$/),
+    )
 
     await wait(60)
 
     // This should be a miss and take ~10ms
     await hitCache()
-    expect(console.log).lastCalledWith('Cacheable "a": hits: 2')
+    expect(console.log).toHaveBeenLastCalledWith(
+      expect.stringMatching(/^Cacheable "test:a": MISS \d+(\.\d+)?ms$/),
+    )
   })
 
   it("Doesn't interfere with error handling", async () => {
-    const cache = new Cacheables()
+    const cache = new Cacheable('test', {
+      buckets: [new MemoryBucket()],
+    })
     const rejecting = () => {
-      return cache.cacheable(() => mockedApiRequest(0, 10, true), 'a')
+      return cache.remember(() => mockedApiRequest(0, 10, true), 'a')
     }
     await expect(rejecting).rejects.toEqual(errorMessage)
   })
 
   it("Doesn't cache rejected value", async () => {
-    const cache = new Cacheables()
+    const cache = new Cacheable('test', {
+      buckets: [new MemoryBucket()],
+    })
     let errNo = 1
     const rejecting = () => {
-      return cache.cacheable(() => Promise.reject(errNo++), 'a')
+      return cache.remember(() => Promise.reject(errNo++), 'a')
     }
     await expect(rejecting()).rejects.toEqual(1)
     await expect(rejecting()).rejects.toEqual(2)

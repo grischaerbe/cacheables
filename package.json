@@ -1,7 +1,7 @@
 {
   "name": "cacheables",
   "version": "3.0.0",
-  "description": "A simple in-memory cache written in Typescript with automatic cache invalidation and an elegant syntax.",
+  "description": "A small, typed cache with multilayer storage buckets, five cache policies (incl. stale-while-revalidate) and concurrency-safe deduplication. Zero dependencies, browser + Node.",
   "main": "dist/cjs/index.js",
   "module": "dist/mjs/index.js",
   "types": "dist/mjs/index.d.ts",

@@ -12,9 +12,9 @@
   ],
   "exports": {
     ".": {
+      "types": "./dist/mjs/index.d.ts",
       "import": "./dist/mjs/index.js",
-      "require": "./dist/cjs/index.js",
-      "types": "./dist/mjs/index.d.ts"
+      "require": "./dist/cjs/index.js"
     }
   },
   "scripts": {

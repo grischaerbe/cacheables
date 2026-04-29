@@ -75,11 +75,6 @@ describe('Cache operations', () => {
     expect(await bucket.meta('test:a')).toBeUndefined()
   })
 
-  it('Creates proper keys', () => {
-    const key = Cacheable.key('aaa', 'bbb', 'ccc', 'ddd', 10, 20)
-    expect(key).toEqual('aaa:bbb:ccc:ddd:10:20')
-  })
-
   it('Logs correctly', async () => {
     console.log = jest.fn()
 

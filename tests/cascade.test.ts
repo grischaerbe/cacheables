@@ -253,6 +253,45 @@ describe('cascade behavior', () => {
     expect(l2.deleteCalls).toEqual(['test:k'])
   })
 
+  it('delete clears in-flight registrations so a later call does not attach to an orphaned producer', async () => {
+    const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
+
+    let resolveFirst!: (value: string) => void
+    const firstResource = () =>
+      new Promise<string>((resolve) => {
+        resolveFirst = resolve
+      })
+
+    const l1 = new FakeBucket()
+    const cache = new Cacheable('test', { buckets: [l1] })
+
+    // Kick off a remember; do NOT await it. After one macrotask its
+    // producer is registered in the in-flight map but suspended on
+    // firstResource.
+    const first = cache.remember(firstResource, 'k')
+    await tick()
+
+    await cache.delete('k')
+
+    // After delete the in-flight registry must be empty for this key,
+    // so this second remember has to run its own producer instead of
+    // sharing the orphaned one above.
+    let secondCalls = 0
+    const second = cache.remember(async () => {
+      secondCalls += 1
+      return 'fresh'
+    }, 'k')
+
+    // Let the second producer land before unblocking the orphan.
+    await tick()
+    resolveFirst('orphan')
+
+    const [a, b] = await Promise.all([first, second])
+    expect(a).toBe('orphan')
+    expect(b).toBe('fresh')
+    expect(secondCalls).toBe(1)
+  })
+
   it('clear propagates to all buckets', async () => {
     const l1 = new FakeBucket()
     const l2 = new FakeBucket()

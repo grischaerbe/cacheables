@@ -48,6 +48,16 @@ export class Cacheable<TView = void> {
 
   async delete(key: string): Promise<void> {
     const fullKey = this.#fullKey(key)
+    // Drop any in-flight registrations for this key so a producer that
+    // is mid-fetch when delete() is called can't be reused as if it
+    // were fresh, and so a subsequent remember()/resolve() does not
+    // attach to a soon-to-be-stale promise.
+    // TODO: thread an AbortSignal through #produceAndWrite so an
+    // in-flight producer's network work is actually cancelled here,
+    // not just orphaned.
+    this.#policyInflight.delete(this.#dedupKey(key, 'value'))
+    this.#policyInflight.delete(this.#dedupKey(key, 'view'))
+    this.#producerInflight.delete(fullKey)
     await Promise.all(this.#buckets.map((b) => b.delete(fullKey)))
   }
 

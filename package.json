@@ -2,12 +2,13 @@
   "name": "cacheables",
   "version": "3.0.0",
   "description": "A small, typed cache with multilayer storage buckets, five cache policies (incl. stale-while-revalidate) and concurrency-safe deduplication. Zero dependencies, browser + Node.",
-  "type": "commonjs",
-  "main": "dist/cjs/index.js",
-  "module": "dist/mjs/index.js",
-  "types": "dist/mjs/index.d.ts",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
   "files": [
     "dist",
+    "package.json",
     "README.md",
     "LICENSE.md"
   ],
@@ -17,14 +18,9 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "import": {
-        "types": "./dist/mjs/index.d.ts",
-        "default": "./dist/mjs/index.js"
-      },
-      "require": {
-        "types": "./dist/cjs/index.d.ts",
-        "default": "./dist/cjs/index.js"
-      }
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "import": "./dist/index.mjs"
     }
   },
   "scripts": {
@@ -35,7 +31,7 @@
     "eslint": "eslint --fix src/**/*.ts",
     "lint": "eslint src/**/*.ts",
     "format:check": "prettier --check .",
-    "build": "rimraf dist && tsc -p tsconfig.mjs.json && tsc -p tsconfig.cjs.json && tsx ./fixup-packages.ts",
+    "build": "tsdown ./src",
     "publint": "publint",
     "attw": "attw --pack ."
   },
@@ -88,5 +84,8 @@
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.59.1"
+  },
+  "dependencies": {
+    "tsdown": "^0.21.10"
   }
 }

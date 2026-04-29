@@ -347,4 +347,25 @@ describe('cache.resolve(): race healing and strict-mode', () => {
       /returned no view.*after a successful cascade write/,
     )
   })
+
+  it('throws strict-mode error when L1 view absent after cascade fill from a deeper hit', async () => {
+    const l1 = new FakeViewBucket()
+    l1.view = async () => undefined // L1 never exposes a view
+    const l2 = new FakeViewBucket({
+      key: 'test:k',
+      value: 'l2',
+      meta: { storedAt: Date.now() },
+    })
+    const cache = new Cacheable<UrlView>('test', { buckets: [l1, l2] })
+
+    let producerCalls = 0
+    await expect(
+      cache.resolve(async () => {
+        producerCalls += 1
+        return 'fresh'
+      }, 'k'),
+    ).rejects.toThrow(/returned no view.*after a successful cascade fill/)
+    // Strict: we did not silently re-run the producer to mask the bug.
+    expect(producerCalls).toBe(0)
+  })
 })

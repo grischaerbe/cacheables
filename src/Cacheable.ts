@@ -273,7 +273,19 @@ export class Cacheable<TView = void> {
       isFresh,
     )
     const wrapped = await this.#buckets[0]!.view(fullKey)
-    if (wrapped === undefined) return undefined
+    if (wrapped === undefined) {
+      if (hitIdx !== 0) {
+        // cascadeFill just wrote to L1. Absence here is a strict-mode
+        // error per the IBucket contract.
+        throw new Error(
+          `Cacheable: L1 bucket returned no view for "${fullKey}" after a successful cascade fill`,
+        )
+      }
+      // hitIdx === 0: cascadeFill skipped L1; the entry was raced away
+      // between the meta probe and the post-fill view. Heal by falling
+      // through to the producer.
+      return undefined
+    }
     return { result: wrapped.view, meta: hitMeta }
   }
 

@@ -11,7 +11,7 @@ type FreshnessPredicate = (meta: BucketEntryMeta) => boolean
 type CascadeFn<R> = (
   fullKey: string,
   isFresh?: FreshnessPredicate,
-) => Promise<{ result: R; meta: BucketEntryMeta } | undefined>
+) => Promise<{ result: R; meta: BucketEntryMeta; hitIdx: number } | undefined>
 
 interface CascadeHit {
   bucket: IBucket<unknown>
@@ -82,7 +82,7 @@ export class Cacheable<TView = void> {
 
     const fullKey = this.#fullKey(key)
     const dedupKey = this.#dedupKey(key, 'value')
-    const { result, hit } = await this.#runPolicy<T, T>(
+    const { result, hitIdx } = await this.#runPolicy<T, T>(
       resource,
       fullKey,
       dedupKey,
@@ -92,8 +92,10 @@ export class Cacheable<TView = void> {
 
     if (logger) {
       const elapsed = Math.round((performance.now() - start) * 10) / 10
+      const status =
+        hitIdx === undefined ? 'MISS' : `HIT (L${hitIdx + 1})`
       logger.log(
-        `Cacheable "${this.#namespace}:${key}": ${hit ? 'HIT' : 'MISS'} ${elapsed}ms`,
+        `Cacheable "${this.#namespace}:${key}": ${status} ${elapsed}ms`,
       )
     }
 
@@ -106,7 +108,7 @@ export class Cacheable<TView = void> {
 
     const fullKey = this.#fullKey(key)
     const dedupKey = this.#dedupKey(key, 'view')
-    const { result, hit } = await this.#runPolicy<T, TView>(
+    const { result, hitIdx } = await this.#runPolicy<T, TView>(
       resource,
       fullKey,
       dedupKey,
@@ -116,8 +118,10 @@ export class Cacheable<TView = void> {
 
     if (logger) {
       const elapsed = Math.round((performance.now() - start) * 10) / 10
+      const status =
+        hitIdx === undefined ? 'MISS' : `HIT (L${hitIdx + 1})`
       logger.log(
-        `Cacheable "${this.#namespace}:${key}": ${hit ? 'HIT' : 'MISS'} ${elapsed}ms`,
+        `Cacheable "${this.#namespace}:${key}": ${status} ${elapsed}ms`,
       )
     }
 
@@ -140,25 +144,25 @@ export class Cacheable<TView = void> {
     dedupKey: string,
     cascadeFn: CascadeFn<R>,
     fromValue: (value: T) => Promise<R>,
-  ): Promise<{ result: R; hit: boolean }> {
+  ): Promise<{ result: R; hitIdx: number | undefined }> {
     switch (this.#policy) {
       case 'cache-only': {
         return this.#dedupPolicy(dedupKey, async () => {
           const cached = await cascadeFn(fullKey)
-          if (cached) return { result: cached.result, hit: true }
+          if (cached) return { result: cached.result, hitIdx: cached.hitIdx }
           const value = await this.#produceAndWrite(fullKey, resource)
-          return { result: await fromValue(value), hit: false }
+          return { result: await fromValue(value), hitIdx: undefined }
         })
       }
       case 'network-only': {
         const value = await resource()
         await this.#cascadeWrite(fullKey, value)
-        return { result: await fromValue(value), hit: false }
+        return { result: await fromValue(value), hitIdx: undefined }
       }
       case 'network-only-non-concurrent': {
         return this.#dedupPolicy(dedupKey, async () => {
           const value = await this.#produceAndWrite(fullKey, resource)
-          return { result: await fromValue(value), hit: false }
+          return { result: await fromValue(value), hitIdx: undefined }
         })
       }
       case 'max-age': {
@@ -168,9 +172,9 @@ export class Cacheable<TView = void> {
             fullKey,
             (m) => Date.now() - m.storedAt <= maxAge,
           )
-          if (cached) return { result: cached.result, hit: true }
+          if (cached) return { result: cached.result, hitIdx: cached.hitIdx }
           const value = await this.#produceAndWrite(fullKey, resource)
-          return { result: await fromValue(value), hit: false }
+          return { result: await fromValue(value), hitIdx: undefined }
         })
       }
       case 'stale-while-revalidate': {
@@ -183,18 +187,18 @@ export class Cacheable<TView = void> {
             Date.now() - cached.meta.storedAt > maxAge
 
           if (cached && !isStale) {
-            return { result: cached.result, hit: true }
+            return { result: cached.result, hitIdx: cached.hitIdx }
           }
 
           if (cached && isStale) {
             this.#produceAndWrite(fullKey, resource).catch(() => {
               /* swallow background revalidation errors */
             })
-            return { result: cached.result, hit: true }
+            return { result: cached.result, hitIdx: cached.hitIdx }
           }
 
           const value = await this.#produceAndWrite(fullKey, resource)
-          return { result: await fromValue(value), hit: false }
+          return { result: await fromValue(value), hitIdx: undefined }
         })
       }
     }
@@ -252,7 +256,7 @@ export class Cacheable<TView = void> {
   async #cascadeRead<T>(
     fullKey: string,
     isFresh?: FreshnessPredicate,
-  ): Promise<{ result: T; meta: BucketEntryMeta } | undefined> {
+  ): Promise<{ result: T; meta: BucketEntryMeta; hitIdx: number } | undefined> {
     const probes = await this.#cascadeProbe(fullKey)
     const hit = this.#findHit(probes, isFresh)
     if (!hit) return undefined
@@ -268,13 +272,15 @@ export class Cacheable<TView = void> {
       hit.idx,
       isFresh,
     )
-    return { result: result.value, meta: hit.meta }
+    return { result: result.value, meta: hit.meta, hitIdx: hit.idx }
   }
 
   async #cascadeResolve(
     fullKey: string,
     isFresh?: FreshnessPredicate,
-  ): Promise<{ result: TView; meta: BucketEntryMeta } | undefined> {
+  ): Promise<
+    { result: TView; meta: BucketEntryMeta; hitIdx: number } | undefined
+  > {
     const probes = await this.#cascadeProbe(fullKey)
     const hit = this.#findHit(probes, isFresh)
     if (!hit) return undefined
@@ -287,7 +293,7 @@ export class Cacheable<TView = void> {
     if (!needsFill) {
       const wrapped = await this.#l1.view(fullKey)
       if (wrapped === undefined) return undefined
-      return { result: wrapped.view, meta: hit.meta }
+      return { result: wrapped.view, meta: hit.meta, hitIdx: hit.idx }
     }
 
     const result = await (hit.bucket as IBucket<TView>).read<unknown>(fullKey)
@@ -315,7 +321,7 @@ export class Cacheable<TView = void> {
       // through to the producer.
       return undefined
     }
-    return { result: wrapped.view, meta: hit.meta }
+    return { result: wrapped.view, meta: hit.meta, hitIdx: hit.idx }
   }
 
   async #cascadeFill<T>(

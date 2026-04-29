@@ -92,12 +92,12 @@ describe('Cache operations', () => {
 
     await cachedRequest()
     expect(console.log).toHaveBeenLastCalledWith(
-      expect.stringMatching(/^Cacheable "test:a": HIT \d+(\.\d+)?ms$/),
+      expect.stringMatching(/^Cacheable "test:a": HIT \(L1\) \d+(\.\d+)?ms$/),
     )
 
     await cachedRequest()
     expect(console.log).toHaveBeenLastCalledWith(
-      expect.stringMatching(/^Cacheable "test:a": HIT \d+(\.\d+)?ms$/),
+      expect.stringMatching(/^Cacheable "test:a": HIT \(L1\) \d+(\.\d+)?ms$/),
     )
   })
 
@@ -164,7 +164,7 @@ describe('Cache operations', () => {
     // This should be a hit and take ~0ms
     await hitCache()
     expect(console.log).toHaveBeenLastCalledWith(
-      expect.stringMatching(/^Cacheable "test:a": HIT \d+(\.\d+)?ms$/),
+      expect.stringMatching(/^Cacheable "test:a": HIT \(L1\) \d+(\.\d+)?ms$/),
     )
 
     await wait(60)
@@ -172,7 +172,7 @@ describe('Cache operations', () => {
     // This should be a hit and take ~0ms
     await hitCache()
     expect(console.log).toHaveBeenLastCalledWith(
-      expect.stringMatching(/^Cacheable "test:a": HIT \d+(\.\d+)?ms$/),
+      expect.stringMatching(/^Cacheable "test:a": HIT \(L1\) \d+(\.\d+)?ms$/),
     )
 
     await wait(60)

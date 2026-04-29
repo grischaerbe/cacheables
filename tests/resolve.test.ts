@@ -221,7 +221,7 @@ describe('cache.resolve(): policy semantics', () => {
 
     await cache.resolve(async () => 'v', 'k')
     expect(log).toHaveBeenLastCalledWith(
-      expect.stringMatching(/^Cacheable "test:k": HIT \d+(\.\d+)?ms$/),
+      expect.stringMatching(/^Cacheable "test:k": HIT \(L1\) \d+(\.\d+)?ms$/),
     )
   })
 })

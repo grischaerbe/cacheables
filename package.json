@@ -30,8 +30,8 @@
   },
   "scripts": {
     "size": "size-limit",
-    "test": "jest",
-    "test:watch": "jest --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "eslint": "eslint --fix src/**/*.ts",
     "lint": "eslint src/**/*.ts",
@@ -74,21 +74,19 @@
     "@arethetypeswrong/cli": "^0.18.2",
     "@eslint/js": "^9.39.4",
     "@size-limit/preset-small-lib": "^12.1.0",
-    "@types/jest": "^30.0.0",
     "@typescript-eslint/eslint-plugin": "^8.59.1",
     "@typescript-eslint/parser": "^8.59.1",
     "eslint": "^9.39.4",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.5",
-    "jest": "^30.3.0",
     "prettier": "^3.8.3",
     "publint": "^0.3.18",
     "rimraf": "^5.0.7",
     "size-limit": "^12.1.0",
-    "ts-jest": "^29.4.9",
     "tsdown": "^0.21.10",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.59.1"
+    "typescript-eslint": "^8.59.1",
+    "vitest": "^4.0.10"
   }
 }

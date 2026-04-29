@@ -3,8 +3,9 @@
   "compilerOptions": {
     "noEmit": true,
     "rootDir": "..",
-    "module": "CommonJS",
-    "moduleResolution": "Node"
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["vitest/globals"]
   },
   "include": ["."]
 }

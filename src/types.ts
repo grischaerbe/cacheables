@@ -55,9 +55,10 @@ export interface IBucket<TView = void> {
 /**
  * Logger contract. Implement to route cache messages into your own
  * logging stack. When a `Cacheable` is constructed with a `logger`,
- * the engine emits a timing message and a hit-count message on every
- * `remember()` invocation. When no logger is provided, the engine is
- * silent.
+ * the engine emits one combined `HIT`/`MISS` message per
+ * `remember()` or `resolve()` call, formatted as
+ * `Cacheable "<namespace>:<key>": HIT|MISS <Xms>`. When no logger is
+ * provided, the engine is silent.
  */
 export interface ILogger {
   log(message: string): void
@@ -109,12 +110,6 @@ export type Policy =
   | 'network-only-non-concurrent'
   | 'max-age'
   | 'stale-while-revalidate'
-
-/**
- * Combined cache options without bucket wiring. Kept exported for
- * backwards-compatible consumer types that mirror the policy shape.
- */
-export type CacheOptions = CacheOptionsBase & PolicyOptions
 
 /**
  * Constructor options for `Cacheable<TView>`. The namespace is passed

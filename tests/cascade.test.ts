@@ -253,6 +253,45 @@ describe('cascade behavior', () => {
     expect(l2.deleteCalls).toEqual(['test:k'])
   })
 
+  it('delete clears in-flight registrations so a later call does not attach to an orphaned producer', async () => {
+    const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
+
+    let resolveFirst!: (value: string) => void
+    const firstResource = () =>
+      new Promise<string>((resolve) => {
+        resolveFirst = resolve
+      })
+
+    const l1 = new FakeBucket()
+    const cache = new Cacheable('test', { buckets: [l1] })
+
+    // Kick off a remember; do NOT await it. After one macrotask its
+    // producer is registered in the in-flight map but suspended on
+    // firstResource.
+    const first = cache.remember(firstResource, 'k')
+    await tick()
+
+    await cache.delete('k')
+
+    // After delete the in-flight registry must be empty for this key,
+    // so this second remember has to run its own producer instead of
+    // sharing the orphaned one above.
+    let secondCalls = 0
+    const second = cache.remember(async () => {
+      secondCalls += 1
+      return 'fresh'
+    }, 'k')
+
+    // Let the second producer land before unblocking the orphan.
+    await tick()
+    resolveFirst('orphan')
+
+    const [a, b] = await Promise.all([first, second])
+    expect(a).toBe('orphan')
+    expect(b).toBe('fresh')
+    expect(secondCalls).toBe(1)
+  })
+
   it('clear propagates to all buckets', async () => {
     const l1 = new FakeBucket()
     const l2 = new FakeBucket()
@@ -463,6 +502,41 @@ describe('concurrent dedup', () => {
       Array.from({ length: 100 }, () => cache.remember(slow, 'k')),
     )
     expect(results.every((r) => r === 'v')).toBe(true)
+    expect(calls).toBe(1)
+  })
+
+  it('SWR stale: 100 concurrent stale reads share one cascade probe and one revalidation', async () => {
+    const seedMeta: BucketEntryMeta = { storedAt: Date.now() - 10_000 }
+    const l1 = new FakeBucket({ key: 'test:k', value: 'stale', meta: seedMeta })
+    const cache = new Cacheable('test', {
+      buckets: [l1],
+      policy: 'stale-while-revalidate',
+      maxAge: 100,
+    })
+
+    l1.metaCalls = 0
+    l1.readCalls = 0
+
+    let calls = 0
+    const slow = async () => {
+      calls += 1
+      await wait(20)
+      return 'fresh'
+    }
+
+    const results = await Promise.all(
+      Array.from({ length: 100 }, () => cache.remember(slow, 'k')),
+    )
+
+    // All 100 callers see the stale value immediately.
+    expect(results.every((r) => r === 'stale')).toBe(true)
+    // Outer dedup: one cascade probe + one value read shared by all.
+    expect(l1.metaCalls).toBe(1)
+    expect(l1.readCalls).toBe(1)
+    // Background revalidation fires exactly once.
+    // Wait for it to land before checking calls so we don't race the
+    // promise's queued callback.
+    await wait(50)
     expect(calls).toBe(1)
   })
 

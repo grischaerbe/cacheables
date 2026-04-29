@@ -1,8 +1,9 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "module": "commonjs",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
     "outDir": "dist/cjs",
-    "target": "es2015"
+    "target": "es2022"
   }
 }

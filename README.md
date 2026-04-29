@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 ![Language](https://img.shields.io/github/languages/top/grischaerbe/cacheables)
-![Build](https://img.shields.io/github/workflow/status/grischaerbe/cacheables/Node.js%20Package)
+![Build](https://img.shields.io/github/actions/workflow/status/grischaerbe/cacheables/ci.yml?branch=master)
 
 A small, typed cache with composable storage buckets and a handful of cache policies, written in TypeScript.
 
@@ -18,7 +18,13 @@ import { Cacheable, MemoryBucket } from 'cacheables'
 
 const cache = new Cacheable('app', { buckets: [new MemoryBucket()] })
 
-cache.remember(() => fetch('https://some-url.com/api'), 'key')
+// Cache the parsed JSON, not the Response — a Response body can be
+// consumed exactly once, so caching the Response itself would break
+// every call after the first .json().
+const data = await cache.remember(
+  () => fetch('https://some-url.com/api').then((r) => r.json()),
+  'key',
+)
 ```
 
 - [Installation](#installation)
@@ -65,7 +71,10 @@ const cache = new Cacheable('weather-data', {
 
 // `remember` is both getter and setter: on a miss it calls the resource
 // and writes to every bucket; on a hit it returns the cached value.
-const getWeather = () => cache.remember(() => fetch(apiUrl), 'karlsruhe')
+// Cache the parsed JSON rather than the Response object — the Response
+// body can only be read once.
+const getWeather = () =>
+  cache.remember(() => fetch(apiUrl).then((r) => r.json()), 'karlsruhe')
 
 await getWeather() // miss — fetched
 await getWeather() // hit — cached
@@ -104,14 +113,30 @@ Returns the cached value if present (subject to policy); otherwise calls `resour
 Same fresh-or-fetch behavior as `remember`, but returns the L1 bucket's view instead of the producer's value. Use this when the bucket produces a domain-specific projection that callers actually need — a filesystem bucket exposing a local URL after caching the bytes, a CDN bucket returning a presigned link, an IndexedDB bucket returning an `ObjectURL`:
 
 ```ts
+import { Cacheable, type IBucket, type BucketEntryMeta } from 'cacheables'
+
 interface UrlView {
   url: string
 }
 
 class FilesystemBucket implements IBucket<UrlView> {
-  // read / write / meta / delete / clear …
+  async read<T>(key: string): Promise<{ value: T } | undefined> {
+    /* read bytes back from disk */
+  }
+  async write<T>(key: string, value: T, meta: BucketEntryMeta): Promise<void> {
+    /* persist value to disk under a deterministic path AND store meta.storedAt */
+  }
+  async meta(key: string): Promise<BucketEntryMeta | undefined> {
+    /* read the sidecar */
+  }
   async view(key: string): Promise<{ view: UrlView } | undefined> {
     /* return { view: { url: pathFor(key) } } when the entry exists */
+  }
+  async delete(key: string): Promise<void> {
+    /* … */
+  }
+  async clear(): Promise<void> {
+    /* … */
   }
 }
 
@@ -128,8 +153,6 @@ const { url } = await cache.resolve(
 `resolve` runs a separate **view-cascade**: the engine probes `meta()` on every layer and, on an L1 hit where no other layer needs back-filling, calls `bucket.view()` directly without ever reading the value. A filesystem bucket holding a 5 MB ArrayBuffer never opens the file on the hot path — only the projection (URL) is materialized.
 
 `resolve` and `remember` share the same in-flight registry: a concurrent pair against the same key triggers `resource()` once. `resolve` honors the cache policy — a stale entry will trigger a producer call (or a background revalidation under `stale-while-revalidate`).
-
-For buckets without a meaningful projection (e.g. the built-in `MemoryBucket`), `TView = void` and `cache.resolve()` resolves to `undefined`.
 
 ### `cache.delete(key): Promise<void>` / `cache.clear(): Promise<void>`
 
@@ -405,21 +428,21 @@ interface ILogger {
 }
 ```
 
-Every `cache.remember(...)` and `cache.resolve(...)` emits one message, tagged `HIT` or `MISS` with the elapsed time:
+Every `cache.remember(...)` and `cache.resolve(...)` emits one message, tagged `HIT` or `MISS` with the elapsed time. The format is `Cacheable "${namespace}:${key}": …` so two namespaces sharing one logger remain distinguishable:
 
 ```
-Cacheable "weather": MISS 12ms
-Cacheable "weather": HIT 0.2ms
+Cacheable "weather-data:karlsruhe": MISS 12ms
+Cacheable "weather-data:karlsruhe": HIT 0.2ms
 ```
 
-The built-in `ConsoleLogger` forwards to `console.log`:
+The built-in `consoleLogger` forwards to `console.log`:
 
 ```ts
-import { Cacheable, ConsoleLogger, MemoryBucket } from 'cacheables'
+import { Cacheable, consoleLogger, MemoryBucket } from 'cacheables'
 
 const cache = new Cacheable('app', {
   buckets: [new MemoryBucket()],
-  logger: new ConsoleLogger(),
+  logger: consoleLogger,
 })
 ```
 
@@ -467,16 +490,16 @@ await cache.cacheable(() => fetch(url), 'weather', {
 
 ```ts
 // v3
-import { Cacheable, MemoryBucket, ConsoleLogger } from 'cacheables'
+import { Cacheable, MemoryBucket, consoleLogger } from 'cacheables'
 
 const cache = new Cacheable('weather', {
   buckets: [new MemoryBucket()],
   policy: 'max-age',
   maxAge: 5_000,
-  logger: new ConsoleLogger(),
+  logger: consoleLogger,
 })
 
-await cache.remember(() => fetch(url), 'weather')
+await cache.remember(() => fetch(url).then((r) => r.json()), 'weather')
 ```
 
 Breaking changes:
@@ -491,8 +514,8 @@ Breaking changes:
 - **`keys()` removed.** Enumerating heterogeneous async layers (some non-enumerable, like CDNs) has no single sensible semantic.
 - **`delete` and `clear` are async.** They now return `Promise<void>` — add `await`.
 - **`isCached` removed.** v3 has no public presence-check API; if you need one, query your bucket directly (e.g. `await bucket.meta(fullKey)`).
-- **`log` / `logTiming` replaced by `logger`.** Pass `new ConsoleLogger()` to restore the previous default-on logging, or implement `ILogger` to route messages elsewhere. Each `remember()` call emits a single formatted message (`Cacheable "<key>": HIT|MISS <Xms>`) instead of `console.time` / `timeEnd`.
-- **Options types reshaped.** v2's `CacheOptions` (constructor) and `CacheableOptions` (per-call) are gone. v3's constructor options type is `CacheableOptions` — same name as v2's per-call type, completely different shape (it now carries `buckets`, `policy`, and `logger`; `namespace` is the constructor's first positional argument).
+- **`log` / `logTiming` replaced by `logger`.** Pass the exported `consoleLogger` singleton to restore the previous default-on logging, or implement `ILogger` to route messages elsewhere. Each `remember()` call emits a single formatted message (`Cacheable "<namespace>:<key>": HIT|MISS <Xms>`) instead of `console.time` / `timeEnd`.
+- **Options types reshaped.** v2's `CacheOptions` (constructor) and `CacheableOptions` (per-call) are gone. v3's only exported options type is `CacheableOptions` — same name as v2's per-call type, completely different shape (it now carries `buckets`, `policy`, and `logger`; `namespace` is the constructor's first positional argument). v2's `CacheOptions` is no longer exported.
 - **Buckets can throw.** Any throw from any bucket rejects `remember()`. v2's in-memory store couldn't fail, so this is a new error surface to be aware of once you wire up a custom bucket.
 
 What's new:

@@ -92,8 +92,7 @@ export class Cacheable<TView = void> {
 
     if (logger) {
       const elapsed = Math.round((performance.now() - start) * 10) / 10
-      const status =
-        hitIdx === undefined ? 'MISS' : `HIT (L${hitIdx + 1})`
+      const status = hitIdx === undefined ? 'MISS' : `HIT (L${hitIdx + 1})`
       logger.log(
         `Cacheable "${this.#namespace}:${key}": ${status} ${elapsed}ms`,
       )
@@ -118,8 +117,7 @@ export class Cacheable<TView = void> {
 
     if (logger) {
       const elapsed = Math.round((performance.now() - start) * 10) / 10
-      const status =
-        hitIdx === undefined ? 'MISS' : `HIT (L${hitIdx + 1})`
+      const status = hitIdx === undefined ? 'MISS' : `HIT (L${hitIdx + 1})`
       logger.log(
         `Cacheable "${this.#namespace}:${key}": ${status} ${elapsed}ms`,
       )

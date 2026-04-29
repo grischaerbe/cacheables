@@ -1,6 +1,6 @@
-export { Cacheable } from './Cacheable'
-export { consoleLogger } from './ConsoleLogger'
-export { MemoryBucket } from './buckets/MemoryBucket'
+export { Cacheable } from './Cacheable.js'
+export { consoleLogger } from './ConsoleLogger.js'
+export { MemoryBucket } from './buckets/MemoryBucket.js'
 export type {
   BucketEntryMeta,
   CacheableOptions,
@@ -8,4 +8,4 @@ export type {
   ILogger,
   Policy,
   PolicyOptions,
-} from './types'
+} from './types.js'

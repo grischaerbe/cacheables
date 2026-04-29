@@ -1,4 +1,4 @@
-import type { BucketEntryMeta, IBucket } from '../types'
+import type { BucketEntryMeta, IBucket } from '../types.js'
 
 export class MemoryBucket implements IBucket<void> {
   #store = new Map<string, { value: unknown; meta: BucketEntryMeta }>()

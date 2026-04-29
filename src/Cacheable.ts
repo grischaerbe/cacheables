@@ -4,7 +4,7 @@ import type {
   IBucket,
   ILogger,
   Policy,
-} from './types'
+} from './types.js'
 
 type FreshnessPredicate = (meta: BucketEntryMeta) => boolean
 

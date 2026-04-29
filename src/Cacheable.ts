@@ -165,26 +165,28 @@ export class Cacheable<TView = void> {
         })
       }
       case 'stale-while-revalidate': {
-        const cached = await cascadeFn(fullKey)
-        const maxAge = this.#maxAge
-        const isStale =
-          !cached ||
-          maxAge === undefined ||
-          Date.now() - cached.meta.storedAt > maxAge
+        return this.#dedupPolicy(dedupKey, async () => {
+          const cached = await cascadeFn(fullKey)
+          const maxAge = this.#maxAge
+          const isStale =
+            !cached ||
+            maxAge === undefined ||
+            Date.now() - cached.meta.storedAt > maxAge
 
-        if (cached && !isStale) {
-          return { result: cached.result, hit: true }
-        }
+          if (cached && !isStale) {
+            return { result: cached.result, hit: true }
+          }
 
-        if (cached && isStale) {
-          this.#produceAndWrite(fullKey, resource).catch(() => {
-            /* swallow background revalidation errors */
-          })
-          return { result: cached.result, hit: true }
-        }
+          if (cached && isStale) {
+            this.#produceAndWrite(fullKey, resource).catch(() => {
+              /* swallow background revalidation errors */
+            })
+            return { result: cached.result, hit: true }
+          }
 
-        const value = await this.#produceAndWrite(fullKey, resource)
-        return { result: await fromValue(value), hit: false }
+          const value = await this.#produceAndWrite(fullKey, resource)
+          return { result: await fromValue(value), hit: false }
+        })
       }
     }
   }

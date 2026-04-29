@@ -505,6 +505,41 @@ describe('concurrent dedup', () => {
     expect(calls).toBe(1)
   })
 
+  it('SWR stale: 100 concurrent stale reads share one cascade probe and one revalidation', async () => {
+    const seedMeta: BucketEntryMeta = { storedAt: Date.now() - 10_000 }
+    const l1 = new FakeBucket({ key: 'test:k', value: 'stale', meta: seedMeta })
+    const cache = new Cacheable('test', {
+      buckets: [l1],
+      policy: 'stale-while-revalidate',
+      maxAge: 100,
+    })
+
+    l1.metaCalls = 0
+    l1.readCalls = 0
+
+    let calls = 0
+    const slow = async () => {
+      calls += 1
+      await wait(20)
+      return 'fresh'
+    }
+
+    const results = await Promise.all(
+      Array.from({ length: 100 }, () => cache.remember(slow, 'k')),
+    )
+
+    // All 100 callers see the stale value immediately.
+    expect(results.every((r) => r === 'stale')).toBe(true)
+    // Outer dedup: one cascade probe + one value read shared by all.
+    expect(l1.metaCalls).toBe(1)
+    expect(l1.readCalls).toBe(1)
+    // Background revalidation fires exactly once.
+    // Wait for it to land before checking calls so we don't race the
+    // promise's queued callback.
+    await wait(50)
+    expect(calls).toBe(1)
+  })
+
   it('cache-only: 100 concurrent hit callers share the policy run (1 meta probe, 1 read)', async () => {
     const seedMeta: BucketEntryMeta = { storedAt: Date.now() }
     const l1 = new FakeBucket({

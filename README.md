@@ -19,7 +19,13 @@ import { Cacheable, MemoryBucket } from 'cacheables'
 
 const cache = new Cacheable('app', { buckets: [new MemoryBucket()] })
 
-cache.remember(() => fetch('https://some-url.com/api'), 'key')
+// Cache the parsed JSON, not the Response — a Response body can be
+// consumed exactly once, so caching the Response itself would break
+// every call after the first .json().
+const data = await cache.remember(
+  () => fetch('https://some-url.com/api').then((r) => r.json()),
+  'key',
+)
 ```
 
 - [Installation](#installation)
@@ -66,7 +72,10 @@ const cache = new Cacheable('weather-data', {
 
 // `remember` is both getter and setter: on a miss it calls the resource
 // and writes to every bucket; on a hit it returns the cached value.
-const getWeather = () => cache.remember(() => fetch(apiUrl), 'karlsruhe')
+// Cache the parsed JSON rather than the Response object — the Response
+// body can only be read once.
+const getWeather = () =>
+  cache.remember(() => fetch(apiUrl).then((r) => r.json()), 'karlsruhe')
 
 await getWeather() // miss — fetched
 await getWeather() // hit — cached

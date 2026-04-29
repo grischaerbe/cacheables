@@ -2,6 +2,7 @@
   "name": "cacheables",
   "version": "3.0.0",
   "description": "A small, typed cache with multilayer storage buckets, five cache policies (incl. stale-while-revalidate) and concurrency-safe deduplication. Zero dependencies, browser + Node.",
+  "type": "commonjs",
   "main": "dist/cjs/index.js",
   "module": "dist/mjs/index.js",
   "types": "dist/mjs/index.d.ts",
@@ -16,9 +17,14 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "types": "./dist/mjs/index.d.ts",
-      "import": "./dist/mjs/index.js",
-      "require": "./dist/cjs/index.js"
+      "import": {
+        "types": "./dist/mjs/index.d.ts",
+        "default": "./dist/mjs/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
     }
   },
   "scripts": {
@@ -29,7 +35,9 @@
     "eslint": "eslint --fix src/**/*.ts",
     "lint": "eslint src/**/*.ts",
     "format:check": "prettier --check .",
-    "build": "rimraf dist && tsc -p tsconfig.mjs.json && tsc -p tsconfig.cjs.json && tsx ./fixup-packages.ts"
+    "build": "rimraf dist && tsc -p tsconfig.mjs.json && tsc -p tsconfig.cjs.json && tsx ./fixup-packages.ts",
+    "publint": "publint",
+    "attw": "attw --pack ."
   },
   "repository": {
     "type": "git",
@@ -62,6 +70,7 @@
   },
   "homepage": "https://github.com/grischaerbe/cacheables#readme",
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.2",
     "@eslint/js": "^9.39.4",
     "@size-limit/preset-small-lib": "^12.1.0",
     "@types/jest": "^30.0.0",
@@ -72,6 +81,7 @@
     "eslint-plugin-prettier": "^5.5.5",
     "jest": "^30.3.0",
     "prettier": "^3.8.3",
+    "publint": "^0.3.18",
     "rimraf": "^5.0.7",
     "size-limit": "^12.1.0",
     "ts-jest": "^29.4.9",
